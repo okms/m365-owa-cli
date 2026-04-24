@@ -37,3 +37,25 @@ owacal-cli auth bookmarklet --connection work --raw
 ```
 
 Create a browser bookmark with the generated value as the URL, open Outlook on the web, click the bookmarklet, then refresh or open Calendar. If OWA sends an `Authorization: Bearer ...` header to `/owa/service.svc`, the helper displays it for copying into `auth set-token`.
+
+## Releases
+
+New versions are published to PyPI from GitHub Actions when a `v*` tag is pushed. The workflow uses PyPI trusted publishing against the `pypi` environment in this repository, so no long-lived PyPI API token is stored in GitHub.
+
+Before the first release, configure a pending trusted publisher on PyPI:
+
+- PyPI project name: `owacal-cli`
+- Owner: `okms`
+- Repository: `owa-cli`
+- Workflow: `publish.yml`
+- Environment: `pypi`
+
+Release flow:
+
+```bash
+# bump version in pyproject.toml, commit
+git tag vX.Y.Z
+git push origin main --tags
+```
+
+The `.github/workflows/publish.yml` workflow runs tests, builds the source and wheel distributions, checks them with Twine, and publishes them to PyPI. Tag-less runs can also be triggered manually from the Actions tab.
