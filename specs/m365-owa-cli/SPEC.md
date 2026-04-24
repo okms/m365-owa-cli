@@ -1,8 +1,10 @@
-# `owacal-cli` Specification Baseline
+# `m365-owa-cli` Specification Baseline
 
 ## Purpose
 
-`owacal-cli` is a **personal, agent-first CLI** for CRUD operations against a Microsoft 365 Outlook calendar using the same backend used by **Outlook on the web / OWA**, not Microsoft Graph.
+`m365-owa-cli` is a **personal, agent-first CLI** for Microsoft 365 Outlook workflows using the same backend used by **Outlook on the web / OWA**, not Microsoft Graph.
+
+The v1 command surface is calendar-focused, but the project name intentionally leaves room for mail and tasks if future OWA endpoint discovery extends beyond calendar CRUD.
 
 The tool is explicitly intended to use OWA internal service endpoints such as:
 
@@ -46,16 +48,16 @@ The OWA API is treated as unstable and undocumented. Breakage is acceptable, and
 ## CLI Name
 
 ```bash
-owacal-cli
+m365-owa-cli
 ```
 
 Recommended command namespace:
 
 ```bash
-owacal-cli events <command>
-owacal-cli auth <command>
-owacal-cli schema <command>
-owacal-cli capabilities
+m365-owa-cli events <command>
+m365-owa-cli auth <command>
+m365-owa-cli schema <command>
+m365-owa-cli capabilities
 ```
 
 This is more precise for agentic use than short commands like `day`, `week`, `get`, and `delete`.
@@ -69,7 +71,7 @@ This is more precise for agentic use than short commands like `day`, `week`, `ge
 Agents should be able to pass tokens explicitly:
 
 ```bash
-OWACAL_TOKEN_WORK="..." owacal-cli events list --connection work --day 2026-04-24
+M365_OWA_TOKEN_WORK="..." m365-owa-cli events list --connection work --day 2026-04-24
 ```
 
 #### 2. Plaintext Token Files
@@ -79,15 +81,15 @@ The CLI must support multiple named connections.
 Example config:
 
 ```text
-~/.config/owacal-cli/connections/work.token
-~/.config/owacal-cli/connections/personal.token
+~/.config/m365-owa-cli/connections/work.token
+~/.config/m365-owa-cli/connections/personal.token
 ```
 
 Example command:
 
 ```bash
-owacal-cli auth set-token --connection work
-owacal-cli auth set-token --connection personal
+m365-owa-cli auth set-token --connection work
+m365-owa-cli auth set-token --connection personal
 ```
 
 The token may be stored in plaintext.
@@ -97,7 +99,7 @@ The token may be stored in plaintext.
 Useful for short-lived agent workflows:
 
 ```bash
-owacal-cli events list --token "Bearer ey..." --day 2026-04-24
+m365-owa-cli events list --token "Bearer ey..." --day 2026-04-24
 ```
 
 This should be supported but discouraged in help text because shell history may retain it.
@@ -107,7 +109,7 @@ This should be supported but discouraged in help text because shell history may 
 Best-effort only.
 
 ```bash
-owacal-cli auth extract-token --browser edge --connection work
+m365-owa-cli auth extract-token --browser edge --connection work
 ```
 
 Requirements:
@@ -132,8 +134,8 @@ Every command that talks to OWA should accept:
 Example:
 
 ```bash
-owacal-cli events list --connection work --week 2026-W17
-owacal-cli events list --connection personal --day 2026-04-24
+m365-owa-cli events list --connection work --week 2026-W17
+m365-owa-cli events list --connection personal --day 2026-04-24
 ```
 
 There should be no hidden global account assumption for agent use.
@@ -141,11 +143,11 @@ There should be no hidden global account assumption for agent use.
 Recommended auth commands:
 
 ```bash
-owacal-cli auth list-connections
-owacal-cli auth set-token --connection <name>
-owacal-cli auth test --connection <name>
-owacal-cli auth remove-token --connection <name>
-owacal-cli auth extract-token --connection <name> --browser edge
+m365-owa-cli auth list-connections
+m365-owa-cli auth set-token --connection <name>
+m365-owa-cli auth test --connection <name>
+m365-owa-cli auth remove-token --connection <name>
+m365-owa-cli auth extract-token --connection <name> --browser edge
 ```
 
 ## Calendar Scope
@@ -187,9 +189,9 @@ Timezone output:
 Examples:
 
 ```bash
-owacal-cli events list --connection work --day 2026-04-24
-owacal-cli events list --connection work --week 2026-W17
-owacal-cli events list --connection work --week 2026-04-24
+m365-owa-cli events list --connection work --day 2026-04-24
+m365-owa-cli events list --connection work --week 2026-W17
+m365-owa-cli events list --connection work --week 2026-04-24
 ```
 
 ## Event Model
@@ -267,7 +269,7 @@ Example refusal:
   "ok": false,
   "error": {
     "code": "SERIES_OPERATION_REFUSED",
-    "message": "This command appears to target a recurring series. owacal-cli v1 only supports operations on individual occurrences.",
+    "message": "This command appears to target a recurring series. m365-owa-cli v1 only supports operations on individual occurrences.",
     "retryable": false
   }
 }
@@ -284,7 +286,7 @@ Default behavior:
 Selectable behavior:
 
 ```bash
-owacal-cli events list --connection work --week 2026-W17 --include-private
+m365-owa-cli events list --connection work --week 2026-W17 --include-private
 ```
 
 If private events are included, the CLI should preserve whatever OWA returns. It should not invent hidden details.
@@ -302,7 +304,7 @@ Category behavior:
 Example:
 
 ```bash
-owacal-cli events create \
+m365-owa-cli events create \
   --connection work \
   --subject "Focus block" \
   --start "2026-04-24T10:00:00" \
@@ -329,10 +331,10 @@ For update operations:
 ### Read Commands
 
 ```bash
-owacal-cli events list --connection <name> --day <YYYY-MM-DD>
-owacal-cli events list --connection <name> --week <YYYY-Www|YYYY-MM-DD>
-owacal-cli events get --connection <name> --id <event_id>
-owacal-cli events search --connection <name> --query <text>
+m365-owa-cli events list --connection <name> --day <YYYY-MM-DD>
+m365-owa-cli events list --connection <name> --week <YYYY-Www|YYYY-MM-DD>
+m365-owa-cli events get --connection <name> --id <event_id>
+m365-owa-cli events search --connection <name> --query <text>
 ```
 
 Search behavior:
@@ -346,11 +348,11 @@ Search behavior:
 Recommended search flags:
 
 ```bash
-owacal-cli events search \
+m365-owa-cli events search \
   --connection work \
   --query "dentist"
 
-owacal-cli events search \
+m365-owa-cli events search \
   --connection work \
   --query "dentist" \
   --from 2026-04-20 \
@@ -360,7 +362,7 @@ owacal-cli events search \
 ### Create Command
 
 ```bash
-owacal-cli events create \
+m365-owa-cli events create \
   --connection <name> \
   --subject <subject> \
   --start <datetime> \
@@ -375,7 +377,7 @@ owacal-cli events create \
 ### Update Command
 
 ```bash
-owacal-cli events update \
+m365-owa-cli events update \
   --connection <name> \
   --id <event_id_or_occurrence_id> \
   [--subject <subject>] \
@@ -402,7 +404,7 @@ Deletion must be explicit.
 Recommended command:
 
 ```bash
-owacal-cli events delete \
+m365-owa-cli events delete \
   --connection <name> \
   --id <event_id_or_occurrence_id> \
   --confirm-event-id <same_id>
@@ -411,7 +413,7 @@ owacal-cli events delete \
 Example:
 
 ```bash
-owacal-cli events delete \
+m365-owa-cli events delete \
   --connection work \
   --id AAMkAG... \
   --confirm-event-id AAMkAG...
@@ -495,11 +497,11 @@ For list responses:
 Required commands:
 
 ```bash
-owacal-cli capabilities
-owacal-cli schema commands
-owacal-cli schema event
-owacal-cli schema errors
-owacal-cli help --json
+m365-owa-cli capabilities
+m365-owa-cli schema commands
+m365-owa-cli schema event
+m365-owa-cli schema errors
+m365-owa-cli help --json
 ```
 
 ### `capabilities`
@@ -661,7 +663,7 @@ Only a few meaningful choices remain:
 1. Should the CLI support config files beyond token files, for example:
 
 ```text
-~/.config/owacal-cli/config.toml
+~/.config/m365-owa-cli/config.toml
 ```
 
 2. Should `--connection` be required on every OWA command, or should there be a default connection?
@@ -677,7 +679,7 @@ Recommended: yes, even though the default is current ISO week.
 Recommended: opt-in by default:
 
 ```bash
-owacal-cli events get --connection work --id <id> --include-raw
+m365-owa-cli events get --connection work --id <id> --include-raw
 ```
 
 5. Should body input support file input?
@@ -685,7 +687,7 @@ owacal-cli events get --connection work --id <id> --include-raw
 Recommended: yes:
 
 ```bash
-owacal-cli events create \
+m365-owa-cli events create \
   --connection work \
   --subject "Planning" \
   --start "2026-04-24T10:00:00" \

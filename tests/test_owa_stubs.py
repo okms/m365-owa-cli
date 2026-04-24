@@ -3,21 +3,21 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
-from owacal_cli.errors import AUTH_EXPIRED, OWA_BACKEND_ERROR, OwacalError
-from owacal_cli.owa.client import (
+from m365_owa_cli.errors import AUTH_EXPIRED, OWA_BACKEND_ERROR, M365OwaError
+from m365_owa_cli.owa.client import (
     OWAClient,
     OWAEndpointNotImplementedError,
     build_create_request,
     build_delete_request,
     build_list_request,
 )
-from owacal_cli.owa.safety import (
+from m365_owa_cli.owa.safety import (
     SafetyError,
     refuse_likely_series_operation,
     require_delete_confirmation,
     require_occurrence_id,
 )
-from owacal_cli.time_ranges import parse_day_range
+from m365_owa_cli.time_ranges import parse_day_range
 
 
 def test_delete_confirmation_requires_exact_match():
@@ -198,7 +198,7 @@ def test_client_maps_rejected_token_to_auth_error():
 
     try:
         client.probe()
-    except OwacalError as exc:
+    except M365OwaError as exc:
         assert exc.code == AUTH_EXPIRED
         assert "secret-token-value" not in repr(exc)
     else:
@@ -232,7 +232,7 @@ def test_client_maps_owa_error_bodies_without_leaking_tokens():
 
     try:
         client.list_events(request=request.to_dict())
-    except OwacalError as exc:
+    except M365OwaError as exc:
         assert exc.code == OWA_BACKEND_ERROR
         assert exc.details["status_code"] == 500
         assert exc.details["owa_response"]["Body"]["ExceptionName"] == "InvalidCalendarGuidException"
@@ -310,7 +310,7 @@ def test_client_surfaces_delete_item_errors():
 
     try:
         client.delete_event(request=request.to_dict())
-    except OwacalError as exc:
+    except M365OwaError as exc:
         assert exc.code == OWA_BACKEND_ERROR
         assert exc.details["delete_errors"][0]["ResponseCode"] == "ErrorInvalidIdMalformed"
         assert "secret-token-value" not in repr(exc)
@@ -411,7 +411,7 @@ def test_client_surfaces_create_item_errors():
 
     try:
         client.create_event(request=request.to_dict())
-    except OwacalError as exc:
+    except M365OwaError as exc:
         assert exc.code == OWA_BACKEND_ERROR
         assert exc.details["create_error"]["ResponseCode"] == "ErrorCannotCreateCalendarItemInNonCalendarFolder"
         assert "secret-token-value" not in repr(exc)

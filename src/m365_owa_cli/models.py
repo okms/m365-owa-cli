@@ -1,4 +1,4 @@
-"""Normalized data models for owacal-cli."""
+"""Normalized data models for m365-owa-cli."""
 
 from __future__ import annotations
 

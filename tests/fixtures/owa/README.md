@@ -47,7 +47,7 @@ If the source is not a HAR, wrap it as a request/response JSON object first:
 
 Before committing, inspect the sanitized output for:
 
-- bearer tokens, cookies, or `OWACAL_TOKEN` values
+- bearer tokens, cookies, or `M365_OWA_TOKEN` values
 - real email addresses
 - tenant IDs, user IDs, mailbox GUIDs, and event IDs
 - private body text that is not needed to preserve payload shape

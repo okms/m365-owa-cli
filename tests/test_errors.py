@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pytest
 
-from owacal_cli.errors import (
+from m365_owa_cli.errors import (
     AUTH_EXPIRED,
     AUTH_REQUIRED,
     CONFIG_ERROR,
@@ -19,7 +19,7 @@ from owacal_cli.errors import (
     NORMALIZATION_ERROR,
     OWA_BACKEND_ERROR,
     OWA_ENDPOINT_NOT_IMPLEMENTED,
-    OwacalError,
+    M365OwaError,
     SERIES_OPERATION_REFUSED,
     TOKEN_FILE_ERROR,
     UNSAFE_OPERATION_REJECTED,
@@ -27,7 +27,7 @@ from owacal_cli.errors import (
     exit_code_for_error_code,
     redact_tokens,
 )
-from owacal_cli.output import error_envelope
+from m365_owa_cli.output import error_envelope
 
 
 @pytest.mark.parametrize(
@@ -60,7 +60,7 @@ def test_redact_tokens_nested_structures() -> None:
             "message": "use Bearer zyxwvutsrqpon",
             "token_value": "keep-out",
             "extra": [
-                "OWACAL_TOKEN_WORK=supersecretvalue",
+                "M365_OWA_TOKEN_WORK=supersecretvalue",
                 {"access_token": "plainsecret"},
             ],
         },
@@ -72,18 +72,18 @@ def test_redact_tokens_nested_structures() -> None:
     assert redacted["authorization"] == "[REDACTED]"
     assert redacted["nested"]["message"] == "use Bearer [REDACTED]"
     assert redacted["nested"]["token_value"] == "[REDACTED]"
-    assert redacted["nested"]["extra"][0] == "OWACAL_TOKEN_WORK=[REDACTED]"
+    assert redacted["nested"]["extra"][0] == "M365_OWA_TOKEN_WORK=[REDACTED]"
     assert redacted["nested"]["extra"][1]["access_token"] == "[REDACTED]"
     assert redacted["other"] == "visible"
 
 
 def test_error_envelope_redacts_details() -> None:
-    error = OwacalError(
+    error = M365OwaError(
         AUTH_EXPIRED,
         "Bearer sensitive-token was rejected",
         details={
             "authorization": "Bearer another-secret-token",
-            "raw": "OWACAL_TOKEN_WORK=token-value",
+            "raw": "M365_OWA_TOKEN_WORK=token-value",
         },
     )
 
@@ -95,4 +95,4 @@ def test_error_envelope_redacts_details() -> None:
     assert envelope["error"]["code"] == AUTH_EXPIRED
     assert envelope["error"]["message"] == "Bearer [REDACTED] was rejected"
     assert envelope["error"]["details"]["authorization"] == "[REDACTED]"
-    assert envelope["error"]["details"]["raw"] == "OWACAL_TOKEN_WORK=[REDACTED]"
+    assert envelope["error"]["details"]["raw"] == "M365_OWA_TOKEN_WORK=[REDACTED]"

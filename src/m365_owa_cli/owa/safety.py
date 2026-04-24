@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from owacal_cli.errors import (
+from m365_owa_cli.errors import (
     SERIES_OPERATION_REFUSED,
     UNSAFE_OPERATION_REJECTED,
-    OwacalError,
+    M365OwaError,
 )
 
 
-class SafetyError(OwacalError):
+class SafetyError(M365OwaError):
     def __init__(self, code: str, message: str, details: Mapping[str, Any] | None = None) -> None:
         super().__init__(code, message, retryable=False, details=dict(details or {}))
 
@@ -44,7 +44,7 @@ def refuse_likely_series_operation(event: Any, *, operation: str = "operation") 
             code=SERIES_OPERATION_REFUSED,
             message=(
                 "This command appears to target a recurring series. "
-                "owacal-cli v1 only supports operations on individual occurrences."
+                "m365-owa-cli v1 only supports operations on individual occurrences."
             ),
             details={
                 "operation": operation,

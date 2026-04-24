@@ -1,4 +1,4 @@
-# `owacal-cli` Implementation Plan
+# `m365-owa-cli` Implementation Plan
 
 ## Current Read
 
@@ -21,7 +21,7 @@ Primary constraints to preserve throughout implementation:
 Adopt the defaults recommended by the spec unless there is a later reason to revisit them:
 
 - Use Python with Typer, Pydantic, httpx, pytest, and pytest-httpx or respx.
-- Support `~/.config/owacal-cli/config.toml` plus per-connection plaintext token files.
+- Support `~/.config/m365-owa-cli/config.toml` plus per-connection plaintext token files.
 - Require `--connection` on OWA commands, with a possible later convenience exception when exactly one connection exists.
 - Support `events search --from/--to` in v1.
 - Make raw OWA event payloads opt-in via `--include-raw`.
@@ -50,7 +50,7 @@ Rules:
 ```text
 pyproject.toml
 README.md
-src/owacal_cli/
+src/m365_owa_cli/
   __init__.py
   __main__.py
   cli.py
@@ -112,7 +112,7 @@ TDD sequence:
 
 Deliverables:
 
-- `pyproject.toml` with console script `owacal-cli`.
+- `pyproject.toml` with console script `m365-owa-cli`.
 - Typer command tree:
   - `capabilities`
   - `schema commands`
@@ -137,9 +137,9 @@ Deliverables:
 
 Acceptance checks:
 
-- `owacal-cli capabilities` returns JSON matching the spec intent.
-- `owacal-cli schema event` returns Pydantic-derived JSON schema.
-- `owacal-cli schema errors` lists every stable error code and exit code.
+- `m365-owa-cli capabilities` returns JSON matching the spec intent.
+- `m365-owa-cli schema event` returns Pydantic-derived JSON schema.
+- `m365-owa-cli schema errors` lists every stable error code and exit code.
 - Invalid arguments exit with code `2`.
 - Missing connection/token exits with code `9` or `3` as appropriate.
 - Delete without matching confirmation exits with code `6`.
@@ -161,7 +161,7 @@ Deliverables:
 
 - Token precedence:
   1. `--token`
-  2. `OWACAL_TOKEN_<CONNECTION>`
+  2. `M365_OWA_TOKEN_<CONNECTION>`
   3. token file under config directory
 - `auth set-token --connection <name>` reading from stdin or prompt without echo when interactive.
 - `auth list-connections` showing configured connection names and token source metadata, never token values.
@@ -360,26 +360,26 @@ The first implementation PR should be limited to Phase 1 plus enough Phase 2 to 
 Suggested first commands to make fully functional:
 
 ```bash
-owacal-cli capabilities
-owacal-cli schema event
-owacal-cli schema errors
-owacal-cli schema commands
-owacal-cli auth list-connections
-owacal-cli auth set-token --connection work
-owacal-cli auth remove-token --connection work
+m365-owa-cli capabilities
+m365-owa-cli schema event
+m365-owa-cli schema errors
+m365-owa-cli schema commands
+m365-owa-cli auth list-connections
+m365-owa-cli auth set-token --connection work
+m365-owa-cli auth remove-token --connection work
 ```
 
 Suggested first commands to scaffold with structured not-implemented errors:
 
 ```bash
-owacal-cli auth test --connection work
-owacal-cli auth extract-token --connection work --browser edge
-owacal-cli events list --connection work --day 2026-04-24
-owacal-cli events get --connection work --id <id>
-owacal-cli events search --connection work --query dentist
-owacal-cli events create --connection work --subject X --start ... --end ...
-owacal-cli events update --connection work --id <id> --subject X
-owacal-cli events delete --connection work --id <id> --confirm-event-id <id>
+m365-owa-cli auth test --connection work
+m365-owa-cli auth extract-token --connection work --browser edge
+m365-owa-cli events list --connection work --day 2026-04-24
+m365-owa-cli events get --connection work --id <id>
+m365-owa-cli events search --connection work --query dentist
+m365-owa-cli events create --connection work --subject X --start ... --end ...
+m365-owa-cli events update --connection work --id <id> --subject X
+m365-owa-cli events delete --connection work --id <id> --confirm-event-id <id>
 ```
 
 ## Main Risks

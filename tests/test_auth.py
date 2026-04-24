@@ -10,12 +10,12 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from owacal_cli.auth import auth_test, bookmarklet_payload, extract_token
-from owacal_cli.config import (
+from m365_owa_cli.auth import auth_test, bookmarklet_payload, extract_token
+from m365_owa_cli.config import (
     CONFIG_DIR_ENV_VAR,
     CONFIG_ERROR,
     UNSUPPORTED_OPERATION,
-    OwacalError,
+    M365OwaError,
     connection_env_var_name,
     get_config_dir,
     list_connections,
@@ -29,7 +29,7 @@ from owacal_cli.config import (
 
 def test_get_config_dir_defaults_and_env_override(monkeypatch, tmp_path):
     monkeypatch.delenv(CONFIG_DIR_ENV_VAR, raising=False)
-    assert get_config_dir() == Path.home() / ".config" / "owacal-cli"
+    assert get_config_dir() == Path.home() / ".config" / "m365-owa-cli"
 
     override = tmp_path / "config"
     monkeypatch.setenv(CONFIG_DIR_ENV_VAR, str(override))
@@ -37,11 +37,11 @@ def test_get_config_dir_defaults_and_env_override(monkeypatch, tmp_path):
 
 
 def test_validate_connection_name_rejects_path_traversal():
-    with pytest.raises(OwacalError) as excinfo:
+    with pytest.raises(M365OwaError) as excinfo:
         validate_connection_name("../work")
     assert excinfo.value.code == CONFIG_ERROR
 
-    with pytest.raises(OwacalError):
+    with pytest.raises(M365OwaError):
         validate_connection_name("work/team")
 
 
@@ -98,7 +98,7 @@ def test_auth_test_probes_owa_when_token_resolves(monkeypatch, tmp_path):
         def probe(self):
             calls.append("probe")
 
-    monkeypatch.setattr("owacal_cli.auth.OWAClient", FakeOWAClient)
+    monkeypatch.setattr("m365_owa_cli.auth.OWAClient", FakeOWAClient)
 
     auth_test("work")
 
@@ -108,7 +108,7 @@ def test_auth_test_probes_owa_when_token_resolves(monkeypatch, tmp_path):
 def test_extract_token_placeholder_raises_structured_error(monkeypatch, tmp_path):
     monkeypatch.setenv(CONFIG_DIR_ENV_VAR, str(tmp_path))
 
-    with pytest.raises(OwacalError) as excinfo:
+    with pytest.raises(M365OwaError) as excinfo:
         extract_token("work")
     assert excinfo.value.code == UNSUPPORTED_OPERATION
     assert excinfo.value.details["connection"] == "work"

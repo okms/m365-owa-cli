@@ -9,7 +9,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from owacal_cli.owa.fixture_sanitize import extract_har_action_entries, sanitize_owa_fixture
+from m365_owa_cli.owa.fixture_sanitize import extract_har_action_entries, sanitize_owa_fixture
 
 
 def test_sanitize_owa_fixture_redacts_tokens_and_identity_consistently():

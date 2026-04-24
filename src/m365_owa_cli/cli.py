@@ -10,25 +10,25 @@ import click
 import typer
 from typer.core import TyperGroup
 
-from owacal_cli import __version__
-from owacal_cli.auth import auth_test, bookmarklet_payload, extract_token
-from owacal_cli.capabilities import capabilities_payload
-from owacal_cli.config import (
+from m365_owa_cli import __version__
+from m365_owa_cli.auth import auth_test, bookmarklet_payload, extract_token
+from m365_owa_cli.capabilities import capabilities_payload
+from m365_owa_cli.config import (
     list_connections as list_configured_connections,
     read_token_file,
     remove_token as remove_connection_token,
     resolve_token,
     set_token as store_connection_token,
 )
-from owacal_cli.errors import (
+from m365_owa_cli.errors import (
     AUTH_REQUIRED,
     CONFIG_ERROR,
     CONNECTION_NOT_FOUND,
     INVALID_ARGUMENTS,
-    OwacalError,
+    M365OwaError,
 )
-from owacal_cli.output import error_envelope, success_envelope
-from owacal_cli.owa.client import (
+from m365_owa_cli.output import error_envelope, success_envelope
+from m365_owa_cli.owa.client import (
     OWAClient,
     build_create_request,
     build_delete_request,
@@ -37,14 +37,14 @@ from owacal_cli.owa.client import (
     build_search_request,
     build_update_request,
 )
-from owacal_cli.owa.safety import require_delete_confirmation
-from owacal_cli.schemas import (
+from m365_owa_cli.owa.safety import require_delete_confirmation
+from m365_owa_cli.schemas import (
     commands_schema_payload,
     error_schema_payload,
     event_schema_payload,
     help_json_payload,
 )
-from owacal_cli.time_ranges import TimeRange, parse_day_range, parse_time_range, parse_week_range
+from m365_owa_cli.time_ranges import TimeRange, parse_day_range, parse_time_range, parse_week_range
 
 
 _GROUP_COMMANDS = {"auth", "events", "schema"}
@@ -81,14 +81,14 @@ def _connection_from_args(args: Sequence[str]) -> str | None:
 
 
 def _emit_click_error(error: click.ClickException, *, args: Sequence[str]) -> None:
-    owacal_error = OwacalError(
+    m365_owa_error = M365OwaError(
         INVALID_ARGUMENTS,
         error.format_message(),
         details={"click_error": type(error).__name__},
     )
     _print_payload(
         error_envelope(
-            owacal_error,
+            m365_owa_error,
             operation=_operation_from_args(args),
             connection=_connection_from_args(args),
         )
@@ -128,11 +128,11 @@ class JsonErrorTyperGroup(TyperGroup):
 
 
 app = typer.Typer(
-    name="owacal-cli",
+    name="m365-owa-cli",
     cls=JsonErrorTyperGroup,
     add_completion=False,
     no_args_is_help=True,
-    help="Agent-first CLI for Outlook on the web calendar endpoints.",
+    help="Agent-first CLI for Microsoft 365 Outlook on the web endpoints.",
 )
 schema_app = typer.Typer(cls=JsonErrorTyperGroup, help="Emit machine-readable schemas.")
 auth_app = typer.Typer(cls=JsonErrorTyperGroup, help="Manage named OWA bearer-token connections.")
@@ -144,14 +144,14 @@ app.add_typer(events_app, name="events")
 
 
 def _exit_with_error(
-    error: OwacalError | Exception,
+    error: M365OwaError | Exception,
     *,
     operation: str | None = None,
     connection: str | None = None,
     pretty: bool = False,
 ) -> None:
-    if not isinstance(error, OwacalError):
-        error = OwacalError("INTERNAL_ERROR", str(error), retryable=True)
+    if not isinstance(error, M365OwaError):
+        error = M365OwaError("INTERNAL_ERROR", str(error), retryable=True)
     _print_payload(
         error_envelope(error, operation=operation, connection=connection),
         pretty=pretty,
@@ -167,8 +167,8 @@ def _emit(
     _print_payload(payload, pretty=pretty)
 
 
-def _invalid(message: str, *, details: dict[str, Any] | None = None) -> OwacalError:
-    return OwacalError(INVALID_ARGUMENTS, message, details=details or {})
+def _invalid(message: str, *, details: dict[str, Any] | None = None) -> M365OwaError:
+    return M365OwaError(INVALID_ARGUMENTS, message, details=details or {})
 
 
 def _resolve_required_token(connection: str, token: str | None) -> str:
@@ -177,12 +177,12 @@ def _resolve_required_token(connection: str, token: str | None) -> str:
         return resolved
 
     if read_token_file(connection) is None:
-        raise OwacalError(
+        raise M365OwaError(
             CONNECTION_NOT_FOUND,
             f"No token source found for connection {connection!r}.",
             details={"connection": connection},
         )
-    raise OwacalError(
+    raise M365OwaError(
         AUTH_REQUIRED,
         f"Token for connection {connection!r} is empty.",
         details={"connection": connection},
@@ -197,7 +197,7 @@ def _read_body(body: str | None, body_file: Path | None) -> str | None:
     try:
         return body_file.read_text(encoding="utf-8")
     except OSError as exc:
-        raise OwacalError(
+        raise M365OwaError(
             CONFIG_ERROR,
             f"Could not read body file {body_file}.",
             details={"path": str(body_file), "error": str(exc)},
@@ -285,7 +285,7 @@ def auth_list_connections(
     try:
         data = list_configured_connections()
         _emit(success_envelope(data, operation="auth.list-connections"), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.list-connections", pretty=pretty)
 
 
@@ -307,11 +307,11 @@ def auth_set_token(
             else:
                 token_value = sys.stdin.read()
         if not token_value or not token_value.strip():
-            raise OwacalError(AUTH_REQUIRED, "Token input was empty.", details={"connection": connection})
+            raise M365OwaError(AUTH_REQUIRED, "Token input was empty.", details={"connection": connection})
         path = store_connection_token(connection, token_value.strip())
         data = {"name": connection, "stored": True, "token_file": str(path)}
         _emit(success_envelope(data, operation="auth.set-token", connection=connection), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.set-token", connection=connection, pretty=pretty)
 
 
@@ -327,7 +327,7 @@ def auth_bookmarklet(
             typer.echo(data["bookmarklet"])
             return
         _emit(success_envelope(data, operation="auth.bookmarklet", connection=connection), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.bookmarklet", connection=connection, pretty=pretty)
 
 
@@ -340,7 +340,7 @@ def auth_remove_token(
         removed = remove_connection_token(connection)
         data = {"name": connection, "removed": removed}
         _emit(success_envelope(data, operation="auth.remove-token", connection=connection), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.remove-token", connection=connection, pretty=pretty)
 
 
@@ -353,7 +353,7 @@ def auth_test_command(
     try:
         auth_test(connection, token=token)
         _emit(success_envelope({"authenticated": True}, operation="auth.test", connection=connection), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.test", connection=connection, pretty=pretty)
 
 
@@ -366,7 +366,7 @@ def auth_extract_token(
     try:
         extract_token(connection, browser=browser)
         _emit(success_envelope({"extracted": True}, operation="auth.extract-token", connection=connection), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.extract-token", connection=connection, pretty=pretty)
 
 
@@ -391,7 +391,7 @@ def events_list(
             success_envelope(events, operation=operation, connection=connection, range=time_range.to_dict()),
             pretty=pretty,
         )
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 
 
@@ -410,7 +410,7 @@ def events_get(
         client = OWAClient(connection=connection, token=resolved_token)
         event = client.get_event(request=request.to_dict(), include_raw=include_raw)
         _emit(success_envelope(event, operation=operation, connection=connection), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 
 
@@ -444,7 +444,7 @@ def events_search(
             success_envelope(events, operation=operation, connection=connection, range=range_payload),
             pretty=pretty,
         )
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 
 
@@ -489,7 +489,7 @@ def events_create(
         client = OWAClient(connection=connection, token=resolved_token)
         event = client.create_event(request=request.to_dict())
         _emit(success_envelope(event, operation=operation, connection=connection), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 
 
@@ -541,7 +541,7 @@ def events_update(
         client = OWAClient(connection=connection, token=resolved_token)
         event = client.update_event(request=request.to_dict())
         _emit(success_envelope(event, operation=operation, connection=connection), pretty=pretty)
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 
 
@@ -564,5 +564,5 @@ def events_delete(
             success_envelope({"deleted": True, "id": event_id}, operation=operation, connection=connection),
             pretty=pretty,
         )
-    except OwacalError as exc:
+    except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)

@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "owacal-cli"
+name = "m365-owa-cli"
 version = "0.1.0"
-description = "Agent-first CLI for Outlook on the web calendar endpoints"
+description = "Agent-first CLI for Microsoft 365 Outlook on the web endpoints"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -15,9 +15,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/okms/owa-cli"
-Repository = "https://github.com/okms/owa-cli"
-Issues = "https://github.com/okms/owa-cli/issues"
+Homepage = "https://github.com/okms/m365-owa-cli"
+Repository = "https://github.com/okms/m365-owa-cli"
+Issues = "https://github.com/okms/m365-owa-cli/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -28,7 +28,7 @@ pretty = [
 ]
 
 [project.scripts]
-owacal-cli = "owacal_cli.cli:app"
+m365-owa-cli = "m365_owa_cli.cli:app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -11,7 +11,7 @@ try:
         CONFIG_ERROR,
         OWA_ENDPOINT_NOT_IMPLEMENTED,
         UNSUPPORTED_OPERATION,
-        OwacalError,
+        M365OwaError,
     )
 except ImportError:  # pragma: no cover - fallback for partial scaffolds
     AUTH_REQUIRED = "AUTH_REQUIRED"
@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - fallback for partial scaffolds
     OWA_ENDPOINT_NOT_IMPLEMENTED = "OWA_ENDPOINT_NOT_IMPLEMENTED"
     UNSUPPORTED_OPERATION = "UNSUPPORTED_OPERATION"
 
-    class OwacalError(Exception):
+    class M365OwaError(Exception):
         def __init__(
             self,
             code: str,
@@ -45,9 +45,9 @@ except ImportError:  # pragma: no cover - fallback for partial scaffolds
         def __str__(self) -> str:
             return self.message
 
-CONFIG_DIR_ENV_VAR = "OWACAL_CONFIG_DIR"
-TOKEN_ENV_PREFIX = "OWACAL_TOKEN_"
-DEFAULT_CONFIG_DIR = Path.home() / ".config" / "owacal-cli"
+CONFIG_DIR_ENV_VAR = "M365_OWA_CONFIG_DIR"
+TOKEN_ENV_PREFIX = "M365_OWA_TOKEN_"
+DEFAULT_CONFIG_DIR = Path.home() / ".config" / "m365-owa-cli"
 CONNECTIONS_DIR_NAME = "connections"
 TOKEN_FILE_SUFFIX = ".token"
 
@@ -64,7 +64,7 @@ def get_config_dir() -> Path:
 
 def validate_connection_name(name: str) -> str:
     if not isinstance(name, str) or not name or not _CONNECTION_NAME_RE.fullmatch(name):
-        raise OwacalError(
+        raise M365OwaError(
             CONFIG_ERROR,
             "Connection names may only contain letters, digits, dot, underscore, and dash.",
             retryable=False,
@@ -86,7 +86,7 @@ def connection_token_path(name: str, config_dir: Path | None = None) -> Path:
 
 def _normalize_token_value(token: str) -> str:
     if not isinstance(token, str):
-        raise OwacalError(
+        raise M365OwaError(
             CONFIG_ERROR,
             "Token values must be strings.",
             retryable=False,
@@ -199,8 +199,8 @@ def resolve_token(
     return read_token_file(name, config_dir=config_dir)
 
 
-def missing_token_error(name: str) -> OwacalError:
-    return OwacalError(
+def missing_token_error(name: str) -> M365OwaError:
+    return M365OwaError(
         AUTH_REQUIRED,
         f"No token found for connection {name!r}.",
         retryable=False,

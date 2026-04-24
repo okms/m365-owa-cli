@@ -6,12 +6,12 @@ from urllib.parse import urlencode
 
 import httpx
 
-from owacal_cli.errors import (
+from m365_owa_cli.errors import (
     AUTH_EXPIRED,
     NORMALIZATION_ERROR,
     OWA_BACKEND_ERROR,
     OWA_ENDPOINT_NOT_IMPLEMENTED,
-    OwacalError,
+    M365OwaError,
     redact_tokens,
 )
 
@@ -96,7 +96,7 @@ def _is_all_day_range(start: Any, end: Any) -> bool:
     )
 
 
-class OWAEndpointNotImplementedError(OwacalError):
+class OWAEndpointNotImplementedError(M365OwaError):
     def __init__(
         self,
         message: str = "This OWA endpoint is not implemented yet.",
@@ -176,7 +176,7 @@ class OWAClient:
                 json=dict(payload),
             )
         except httpx.HTTPError as exc:
-            raise OwacalError(
+            raise M365OwaError(
                 OWA_BACKEND_ERROR,
                 f"OWA request failed for {endpoint.action}.",
                 retryable=True,
@@ -195,7 +195,7 @@ class OWAClient:
             "content_type": response.headers.get("content-type"),
         }
         if response.status_code in {401, 403}:
-            raise OwacalError(
+            raise M365OwaError(
                 AUTH_EXPIRED,
                 "OWA bearer token expired or was rejected.",
                 retryable=False,
@@ -206,7 +206,7 @@ class OWAClient:
             data = response.json()
         except ValueError as exc:
             details["response_preview"] = response.text[:500]
-            raise OwacalError(
+            raise M365OwaError(
                 OWA_BACKEND_ERROR,
                 "OWA returned a non-JSON response.",
                 retryable=response.status_code >= 500,
@@ -223,7 +223,7 @@ class OWAClient:
             message = "OWA returned an error response."
             if response_code:
                 message = f"OWA returned {response_code}."
-            raise OwacalError(
+            raise M365OwaError(
                 OWA_BACKEND_ERROR,
                 message,
                 retryable=response.status_code >= 500 or response_class == "Error",
@@ -235,7 +235,7 @@ class OWAClient:
         data = self._post_json("GetCalendarFolders", {})
         groups = data.get("CalendarGroups")
         if not isinstance(groups, list):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "OWA calendar folder response did not include CalendarGroups.",
                 details={"response_keys": sorted(data.keys())},
@@ -258,7 +258,7 @@ class OWAClient:
                         return dict(folder_id)
         if fallback is not None:
             return fallback
-        raise OwacalError(
+        raise M365OwaError(
             NORMALIZATION_ERROR,
             "OWA calendar folder response did not include a usable calendar folder id.",
             details={"calendar_group_count": len(groups)},
@@ -271,7 +271,7 @@ class OWAClient:
         payload = request.get("payload", {})
         range_payload = payload.get("range", {}) if isinstance(payload, Mapping) else {}
         if not isinstance(range_payload, Mapping):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "events.list request did not include a usable range payload.",
                 details={"request": request},
@@ -297,14 +297,14 @@ class OWAClient:
     def _extract_calendar_items(self, data: Mapping[str, Any]) -> list[Mapping[str, Any]]:
         body = data.get("Body")
         if not isinstance(body, Mapping):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "OWA calendar view response did not include a Body object.",
                 details={"response_keys": sorted(data.keys())},
             )
         items = body.get("Items")
         if not isinstance(items, list):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "OWA calendar view response did not include an Items list.",
                 details={"body_keys": sorted(str(key) for key in body.keys())},
@@ -314,7 +314,7 @@ class OWAClient:
     def list_events(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
         request = kwargs.get("request")
         if not isinstance(request, Mapping):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "events.list requires a structured OWA request.",
                 details={"request": request},
@@ -347,7 +347,7 @@ class OWAClient:
     def _create_item_payload(self, request: Mapping[str, Any]) -> dict[str, Any]:
         payload = request.get("payload", {})
         if not isinstance(payload, Mapping):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "events.create request did not include a usable payload.",
                 details={"request": request},
@@ -356,7 +356,7 @@ class OWAClient:
         start = payload.get("start")
         end = payload.get("end")
         if not subject or not start or not end:
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "events.create request requires subject, start, and end.",
                 details={"payload": payload},
@@ -400,14 +400,14 @@ class OWAClient:
         messages = body.get("ResponseMessages") if isinstance(body, Mapping) else None
         items = messages.get("Items") if isinstance(messages, Mapping) else None
         if not isinstance(items, list) or not items:
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "OWA create response did not include response messages.",
                 details={"response_keys": sorted(data.keys())},
             )
         message = items[0]
         if not isinstance(message, Mapping):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "OWA create response message had an unexpected shape.",
                 details={"message": message},
@@ -415,7 +415,7 @@ class OWAClient:
         if str(message.get("ResponseClass", "")).lower() != "success" and str(
             message.get("ResponseCode", "")
         ).lower() != "noerror":
-            raise OwacalError(
+            raise M365OwaError(
                 OWA_BACKEND_ERROR,
                 "OWA returned an error while creating an event.",
                 retryable=False,
@@ -423,14 +423,14 @@ class OWAClient:
             )
         created_items = message.get("Items")
         if not isinstance(created_items, list) or not created_items:
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "OWA create response did not include a created item.",
                 details={"message_keys": sorted(str(key) for key in message.keys())},
             )
         created_item = created_items[0]
         if not isinstance(created_item, Mapping):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "OWA created item had an unexpected shape.",
                 details={"created_item": created_item},
@@ -440,7 +440,7 @@ class OWAClient:
     def create_event(self, *_, **kwargs: Any) -> dict[str, Any]:
         request = kwargs.get("request")
         if not isinstance(request, Mapping):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "events.create requires a structured OWA request.",
                 details={"request": request},
@@ -486,7 +486,7 @@ class OWAClient:
         messages = body.get("ResponseMessages") if isinstance(body, Mapping) else None
         items = messages.get("Items") if isinstance(messages, Mapping) else None
         if not isinstance(items, list) or not items:
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "OWA delete response did not include response messages.",
                 details={"response_keys": sorted(data.keys())},
@@ -499,7 +499,7 @@ class OWAClient:
             and str(item.get("ResponseCode", "")).lower() != "noerror"
         ]
         if errors:
-            raise OwacalError(
+            raise M365OwaError(
                 OWA_BACKEND_ERROR,
                 "OWA returned an error while deleting an event.",
                 retryable=False,
@@ -509,7 +509,7 @@ class OWAClient:
     def delete_event(self, *_, **kwargs: Any) -> None:
         request = kwargs.get("request")
         if not isinstance(request, Mapping):
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "events.delete requires a structured OWA request.",
                 details={"request": request},
@@ -517,7 +517,7 @@ class OWAClient:
         payload = request.get("payload", {})
         event_id = payload.get("id") if isinstance(payload, Mapping) else None
         if not event_id:
-            raise OwacalError(
+            raise M365OwaError(
                 NORMALIZATION_ERROR,
                 "events.delete request did not include an event id.",
                 details={"request": request},

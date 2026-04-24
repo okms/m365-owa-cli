@@ -6,7 +6,7 @@ import re
 from typing import Any, Mapping
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from owacal_cli.errors import redact_tokens
+from m365_owa_cli.errors import redact_tokens
 
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)

@@ -1,13 +1,13 @@
-"""Machine-readable schema payloads for owacal-cli."""
+"""Machine-readable schema payloads for m365-owa-cli."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from owacal_cli.capabilities import capabilities_data
-from owacal_cli.errors import stable_error_specs
-from owacal_cli.models import Event
-from owacal_cli.output import success_envelope
+from m365_owa_cli.capabilities import capabilities_data
+from m365_owa_cli.errors import stable_error_specs
+from m365_owa_cli.models import Event
+from m365_owa_cli.output import success_envelope
 
 
 COMMAND_SCHEMA: list[dict[str, Any]] = [

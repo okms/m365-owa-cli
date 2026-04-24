@@ -12,7 +12,7 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from owacal_cli.owa.fixture_sanitize import extract_har_action_entries, sanitize_owa_fixture
+from m365_owa_cli.owa.fixture_sanitize import extract_har_action_entries, sanitize_owa_fixture
 
 
 def parse_args() -> argparse.Namespace:

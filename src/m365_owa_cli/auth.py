@@ -7,12 +7,12 @@ try:
     from .errors import (  # type: ignore
         AUTH_REQUIRED,
         UNSUPPORTED_OPERATION,
-        OwacalError,
+        M365OwaError,
     )
 except ImportError:  # pragma: no cover - fallback for partial scaffolds
     from .config import (
         UNSUPPORTED_OPERATION,
-        OwacalError,
+        M365OwaError,
     )
     AUTH_REQUIRED = "AUTH_REQUIRED"
 
@@ -58,18 +58,18 @@ def bookmarklet_payload(connection: str) -> dict:
           const connection = {connection_js};
           const allowedHosts = {allowed_hosts_js};
           if (!allowedHosts.includes(location.hostname)) {{
-            alert("owacal-cli: open Outlook on the web first. Allowed hosts: " + allowedHosts.join(", "));
+            alert("m365-owa-cli: open Outlook on the web first. Allowed hosts: " + allowedHosts.join(", "));
             return;
           }}
-          if (window.__owacalTokenBookmarkletInstalled) {{
-            if (window.__owacalTokenBookmarkletShow) {{
-              window.__owacalTokenBookmarkletShow("Already watching OWA requests for connection " + connection + ".");
+          if (window.__m365OwaTokenBookmarkletInstalled) {{
+            if (window.__m365OwaTokenBookmarkletShow) {{
+              window.__m365OwaTokenBookmarkletShow("Already watching OWA requests for connection " + connection + ".");
             }}
             return;
           }}
-          window.__owacalTokenBookmarkletInstalled = true;
+          window.__m365OwaTokenBookmarkletInstalled = true;
           const panel = document.createElement("div");
-          panel.id = "owacal-token-helper";
+          panel.id = "m365-owa-token-helper";
           panel.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:2147483647;width:min(520px,calc(100vw - 32px));background:#111827;color:#f9fafb;border:1px solid #374151;border-radius:6px;padding:12px;font:13px/1.35 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 18px 40px rgba(0,0,0,.35)";
           function makeText(tag, text, styles) {{
             const node = document.createElement(tag);
@@ -77,17 +77,17 @@ def bookmarklet_payload(connection: str) -> dict:
             if (styles) Object.assign(node.style, styles);
             return node;
           }}
-          const title = makeText("div", "owacal-cli token helper", {{fontWeight:"700", marginBottom:"6px"}});
+          const title = makeText("div", "m365-owa-cli token helper", {{fontWeight:"700", marginBottom:"6px"}});
           const status = makeText("div", "Watching future OWA calendar requests for connection " + connection + ". Refresh or open Calendar if nothing appears.");
-          status.id = "owacal-status";
+          status.id = "m365-owa-status";
           const textarea = document.createElement("textarea");
-          textarea.id = "owacal-token";
+          textarea.id = "m365-owa-token";
           textarea.readOnly = true;
           Object.assign(textarea.style, {{display:"none", marginTop:"8px", width:"100%", height:"82px", boxSizing:"border-box", background:"#030712", color:"#f9fafb", border:"1px solid #4b5563", borderRadius:"4px", padding:"6px", font:"12px ui-monospace,SFMono-Regular,Menlo,monospace"}});
           const actions = document.createElement("div");
           Object.assign(actions.style, {{display:"flex", gap:"8px", marginTop:"8px"}});
           const copy = document.createElement("button");
-          copy.id = "owacal-copy";
+          copy.id = "m365-owa-copy";
           copy.type = "button";
           copy.textContent = "Copy";
           copy.style.display = "none";
@@ -98,7 +98,7 @@ def bookmarklet_payload(connection: str) -> dict:
           panel.append(title, status, textarea, actions);
           document.body.appendChild(panel);
           close.onclick = () => panel.remove();
-          window.__owacalTokenBookmarkletShow = message => {{
+          window.__m365OwaTokenBookmarkletShow = message => {{
             if (!document.body.contains(panel)) document.body.appendChild(panel);
             status.textContent = message;
           }};
@@ -139,9 +139,9 @@ def bookmarklet_payload(connection: str) -> dict:
             textarea.style.display = "block";
             copy.style.display = "inline-block";
             textarea.value = auth;
-            status.textContent = "Captured bearer header from " + new URL(url, location.href).pathname + ". Store it with: owacal-cli auth set-token --connection " + connection;
+            status.textContent = "Captured bearer header from " + new URL(url, location.href).pathname + ". Store it with: m365-owa-cli auth set-token --connection " + connection;
             copy.onclick = () => navigator.clipboard.writeText(auth).then(() => {{
-              status.textContent = "Copied. Store it with: owacal-cli auth set-token --connection " + connection;
+              status.textContent = "Copied. Store it with: m365-owa-cli auth set-token --connection " + connection;
             }}).catch(() => {{
               textarea.focus();
               textarea.select();
@@ -164,19 +164,19 @@ def bookmarklet_payload(connection: str) -> dict:
           const originalOpen = XMLHttpRequest.prototype.open;
           const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
           XMLHttpRequest.prototype.open = function(method, url) {{
-            this.__owacalUrl = url;
+            this.__m365OwaUrl = url;
             return originalOpen.apply(this, arguments);
           }};
           XMLHttpRequest.prototype.setRequestHeader = function(name, value) {{
-            if (String(name).toLowerCase() === "authorization") this.__owacalAuthorization = value;
+            if (String(name).toLowerCase() === "authorization") this.__m365OwaAuthorization = value;
             return originalSetRequestHeader.apply(this, arguments);
           }};
           const originalSend = XMLHttpRequest.prototype.send;
           XMLHttpRequest.prototype.send = function() {{
-            try {{ capture(this.__owacalAuthorization, this.__owacalUrl || location.href); }} catch (error) {{}}
+            try {{ capture(this.__m365OwaAuthorization, this.__m365OwaUrl || location.href); }} catch (error) {{}}
             return originalSend.apply(this, arguments);
           }};
-          window.__owacalTokenBookmarkletShow("Watching future OWA requests for connection " + connection + ". Refresh or open Calendar if nothing appears.");
+          window.__m365OwaTokenBookmarkletShow("Watching future OWA requests for connection " + connection + ". Refresh or open Calendar if nothing appears.");
         }})();
         """
     )
@@ -196,7 +196,7 @@ def bookmarklet_payload(connection: str) -> dict:
             "Create a browser bookmark whose URL is the bookmarklet value.",
             "Open Outlook on the web on an allowed host.",
             "Click the bookmarklet, then refresh or open Calendar to trigger OWA service requests.",
-            "Copy the captured bearer value and run owacal-cli auth set-token --connection "
+            "Copy the captured bearer value and run m365-owa-cli auth set-token --connection "
             + connection,
         ],
     }
@@ -210,7 +210,7 @@ def auth_test(
     validate_connection_name(connection)
     resolved_token = resolve_token(connection, token=token, config_dir=config_dir)
     if not resolved_token:
-        raise OwacalError(
+        raise M365OwaError(
             AUTH_REQUIRED,
             f"No token found for connection {connection!r}.",
             retryable=False,
@@ -226,13 +226,13 @@ def extract_token(
 ) -> None:
     validate_connection_name(connection)
     if browser.lower() != "edge":
-        raise OwacalError(
+        raise M365OwaError(
             UNSUPPORTED_OPERATION,
             "Only Edge token extraction is considered for v1.",
             retryable=False,
             details={"browser": browser},
         )
-    raise OwacalError(
+    raise M365OwaError(
         UNSUPPORTED_OPERATION,
         "Browser token extraction is not implemented in this build.",
         retryable=False,

@@ -6,9 +6,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from owacal_cli.capabilities import capabilities_payload
-from owacal_cli.models import Event
-from owacal_cli.schemas import (
+from m365_owa_cli.capabilities import capabilities_payload
+from m365_owa_cli.models import Event
+from m365_owa_cli.schemas import (
     commands_schema_payload,
     error_schema_payload,
     event_schema_payload,

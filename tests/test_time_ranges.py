@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 import pytest
 
-from owacal_cli.time_ranges import parse_day_range, parse_time_range, parse_week_range
+from m365_owa_cli.time_ranges import parse_day_range, parse_time_range, parse_week_range
 
 
 def test_parse_day_range_returns_exclusive_next_midnight():

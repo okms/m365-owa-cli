@@ -2,14 +2,16 @@
 
 ## Intent
 
-This repository is for `owacal-cli`, a personal, agent-first Python CLI for Microsoft 365 Outlook calendar CRUD through Outlook on the web / OWA internal service endpoints. Microsoft Graph is out of scope for v1.
+This repository is for `m365-owa-cli`, a personal, agent-first Python CLI for Microsoft 365 Outlook workflows through Outlook on the web / OWA internal service endpoints. Microsoft Graph is out of scope for v1.
+
+The current implementation is calendar-focused, but the naming intentionally leaves room for mail and tasks if future OWA endpoint work extends beyond calendar CRUD.
 
 The CLI should favor stable machine interfaces over convenience: JSON by default, stable commands, stable errors, stable exit codes, explicit destructive-operation confirmation, and schema/capability commands agents can inspect.
 
 ## What Is What
 
 - `specs/` contains project specifications and is the source of product intent until implementation begins.
-- `specs/owacal-cli/SPEC.md` is the current baseline product specification.
+- `specs/m365-owa-cli/SPEC.md` is the current baseline product specification.
 - `AGENTS.md` is the condensed working guidance for coding agents.
 - `CLAUDE.md` delegates to this file for Claude Code.
 
@@ -39,4 +41,4 @@ This is a personal-use tool. Plaintext bearer tokens and plaintext token files a
 
 ## Current Status
 
-Only the specification baseline exists. Do not assume implementation files, package layout, or release workflow until those are intentionally added.
+The implementation scaffold exists and is pre-release. Preserve the stable machine interface while the OWA endpoint adapter is iterated.

@@ -9,8 +9,8 @@ from typer.testing import CliRunner
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from owacal_cli.cli import app
-from owacal_cli.errors import OWA_BACKEND_ERROR, OwacalError
+from m365_owa_cli.cli import app
+from m365_owa_cli.errors import OWA_BACKEND_ERROR, M365OwaError
 
 
 runner = CliRunner()
@@ -40,7 +40,7 @@ def test_capabilities_and_schema_commands_emit_success_envelopes():
 
 
 def test_auth_token_commands_do_not_leak_tokens(tmp_path, monkeypatch):
-    monkeypatch.setenv("OWACAL_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("M365_OWA_CONFIG_DIR", str(tmp_path))
 
     result = runner.invoke(
         app,
@@ -85,7 +85,7 @@ def test_auth_bookmarklet_generates_inspectable_helper():
 
 
 def test_delete_confirmation_failure_exits_before_auth(tmp_path, monkeypatch):
-    monkeypatch.setenv("OWACAL_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("M365_OWA_CONFIG_DIR", str(tmp_path))
 
     result = runner.invoke(
         app,
@@ -116,13 +116,13 @@ def test_events_list_with_direct_token_reaches_owa_client_without_leaking_token(
         def list_events(self, *, request, include_raw):
             assert request["endpoint"] == "GetCalendarView"
             assert include_raw is False
-            raise OwacalError(
+            raise M365OwaError(
                 OWA_BACKEND_ERROR,
                 "backend received Bearer should-not-leak",
                 details={"authorization": "Bearer should-not-leak"},
             )
 
-    monkeypatch.setattr("owacal_cli.cli.OWAClient", FakeOWAClient)
+    monkeypatch.setattr("m365_owa_cli.cli.OWAClient", FakeOWAClient)
 
     result = runner.invoke(
         app,

@@ -1,10 +1,10 @@
-"""Static capability payloads for owacal-cli."""
+"""Static capability payloads for m365-owa-cli."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from owacal_cli.output import success_envelope
+from m365_owa_cli.output import success_envelope
 
 
 def capabilities_data() -> dict[str, Any]:

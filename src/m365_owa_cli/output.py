@@ -1,4 +1,4 @@
-"""JSON envelope helpers for owacal-cli."""
+"""JSON envelope helpers for m365-owa-cli."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Mapping
 
-from owacal_cli.errors import OwacalError, redact_tokens
+from m365_owa_cli.errors import M365OwaError, redact_tokens
 
 
 def json_safe(value: Any) -> Any:
@@ -51,17 +51,17 @@ def success_envelope(
 
 
 def error_envelope(
-    error: OwacalError | Exception | str,
+    error: M365OwaError | Exception | str,
     *,
     connection: str | None = None,
     operation: str | None = None,
     range: dict[str, Any] | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
-    if isinstance(error, OwacalError):
+    if isinstance(error, M365OwaError):
         error_payload = error.to_dict()
     else:
-        wrapped = OwacalError(
+        wrapped = M365OwaError(
             "INTERNAL_ERROR",
             str(error),
             retryable=True,

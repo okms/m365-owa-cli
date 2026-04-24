@@ -1,4 +1,4 @@
-"""Stable error types, exit codes, and redaction helpers for owacal-cli."""
+"""Stable error types, exit codes, and redaction helpers for m365-owa-cli."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ _ERROR_SPEC_BY_CODE = {spec.code: spec for spec in ERROR_SPECS}
 
 
 _TOKEN_PATTERN = re.compile(
-    r"(?i)\bBearer\s+([A-Za-z0-9._~+/=-]{8,})\b|\b(OWACAL_TOKEN(?:_[A-Z0-9]+)?)\b\s*=\s*([^\s'\";]+)"
+    r"(?i)\bBearer\s+([A-Za-z0-9._~+/=-]{8,})\b|\b(M365_OWA_TOKEN(?:_[A-Z0-9]+)?)\b\s*=\s*([^\s'\";]+)"
 )
 _SENSITIVE_KEY_PARTS = (
     "authorization",
@@ -90,8 +90,8 @@ def exit_code_for_error_code(code: str) -> int:
     return 10
 
 
-class OwacalError(Exception):
-    """Stable structured error for owacal-cli."""
+class M365OwaError(Exception):
+    """Stable structured error for m365-owa-cli."""
 
     __slots__ = ("code", "message", "retryable", "details")
 
@@ -126,7 +126,7 @@ class OwacalError(Exception):
 
     def __repr__(self) -> str:
         return (
-            "OwacalError("
+            "M365OwaError("
             f"code={self.code!r}, "
             f"message={redact_tokens(self.message)!r}, "
             f"retryable={self.retryable!r}, "
@@ -170,7 +170,7 @@ def _redact_string(value: str) -> str:
 
 
 def redact_tokens(value: Any) -> Any:
-    """Redact bearer tokens and OWACAL_TOKEN-like values from nested data."""
+    """Redact bearer tokens and M365_OWA_TOKEN-like values from nested data."""
 
     return _redact_any(value, seen=set())
 

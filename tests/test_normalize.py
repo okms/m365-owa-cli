@@ -1,4 +1,4 @@
-from owacal_cli.owa.normalize import Event, normalize_event
+from m365_owa_cli.owa.normalize import Event, normalize_event
 
 
 def test_normalize_event_maps_representative_owa_fields():

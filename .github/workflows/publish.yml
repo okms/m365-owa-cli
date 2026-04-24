@@ -63,7 +63,7 @@ jobs:
       id-token: write
     environment:
       name: pypi
-      url: https://pypi.org/p/owacal-cli
+      url: https://pypi.org/p/m365-owa-cli
     steps:
       - uses: actions/download-artifact@v8
         with:
