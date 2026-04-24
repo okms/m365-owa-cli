@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from owacal_cli.cli import app
+from owacal_cli.errors import OWA_BACKEND_ERROR, OwacalError
 
 
 runner = CliRunner()
@@ -65,6 +66,24 @@ def test_auth_token_commands_do_not_leak_tokens(tmp_path, monkeypatch):
     assert payload["data"]["removed"] is True
 
 
+def test_auth_bookmarklet_generates_inspectable_helper():
+    result = runner.invoke(app, ["auth", "bookmarklet", "--connection", "work"])
+
+    assert result.exit_code == 0
+    payload = _json(result)
+    assert payload["ok"] is True
+    assert payload["operation"] == "auth.bookmarklet"
+    assert payload["connection"] == "work"
+    assert payload["data"]["bookmarklet"].startswith("javascript:")
+    assert "/owa/service.svc" in payload["data"]["bookmarklet"]
+    assert "outlook.cloud.microsoft" in payload["data"]["allowed_hosts"]
+
+    raw_result = runner.invoke(app, ["auth", "bookmarklet", "--connection", "work", "--raw"])
+    assert raw_result.exit_code == 0
+    assert raw_result.stdout.startswith("javascript:")
+    assert '"ok"' not in raw_result.stdout
+
+
 def test_delete_confirmation_failure_exits_before_auth(tmp_path, monkeypatch):
     monkeypatch.setenv("OWACAL_CONFIG_DIR", str(tmp_path))
 
@@ -88,7 +107,23 @@ def test_delete_confirmation_failure_exits_before_auth(tmp_path, monkeypatch):
     assert payload["error"]["code"] == "UNSAFE_OPERATION_REJECTED"
 
 
-def test_events_list_with_direct_token_reaches_structured_owa_stub():
+def test_events_list_with_direct_token_reaches_owa_client_without_leaking_token(monkeypatch):
+    class FakeOWAClient:
+        def __init__(self, *, connection, token):
+            assert connection == "work"
+            assert token == "Bearer should-not-leak"
+
+        def list_events(self, *, request, include_raw):
+            assert request["endpoint"] == "GetCalendarView"
+            assert include_raw is False
+            raise OwacalError(
+                OWA_BACKEND_ERROR,
+                "backend received Bearer should-not-leak",
+                details={"authorization": "Bearer should-not-leak"},
+            )
+
+    monkeypatch.setattr("owacal_cli.cli.OWAClient", FakeOWAClient)
+
     result = runner.invoke(
         app,
         [
@@ -107,7 +142,7 @@ def test_events_list_with_direct_token_reaches_structured_owa_stub():
     payload = _json(result)
     assert payload["ok"] is False
     assert payload["operation"] == "events.list"
-    assert payload["error"]["code"] == "OWA_ENDPOINT_NOT_IMPLEMENTED"
+    assert payload["error"]["code"] == "OWA_BACKEND_ERROR"
     assert "should-not-leak" not in result.stdout
 
 

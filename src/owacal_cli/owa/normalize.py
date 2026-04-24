@@ -98,10 +98,21 @@ def _extract_meeting_link(data: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _extract_id(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        for key in ("Id", "id"):
+            if value.get(key):
+                return str(value[key])
+        return None
+    if value is None:
+        return None
+    return str(value)
+
+
 def _is_private(data: Mapping[str, Any]) -> bool:
     if data.get("is_private") is not None:
         return bool(data["is_private"])
-    sensitivity = data.get("sensitivity")
+    sensitivity = _first_present(data, ("sensitivity", "Sensitivity"))
     if isinstance(sensitivity, str) and sensitivity.lower() == "private":
         return True
     if data.get("showAs") == "private":
@@ -114,9 +125,11 @@ def _is_recurring(data: Mapping[str, Any]) -> bool:
         return bool(data["is_recurring"])
     if data.get("isRecurring") is not None:
         return bool(data["isRecurring"])
+    if data.get("IsRecurring") is not None:
+        return bool(data["IsRecurring"])
     if data.get("recurrence") is not None:
         return True
-    if data.get("seriesMasterId") is not None:
+    if _first_present(data, ("seriesMasterId", "SeriesMasterItemId", "SeriesId")) is not None:
         return True
     return False
 
@@ -126,7 +139,15 @@ def _is_occurrence(data: Mapping[str, Any]) -> bool:
         return bool(data["is_occurrence"])
     if data.get("isOccurrence") is not None:
         return bool(data["isOccurrence"])
+    if data.get("IsOccurrence") is not None:
+        return bool(data["IsOccurrence"])
     if data.get("occurrence_id") is not None:
+        return True
+    calendar_item_type = data.get("CalendarItemType")
+    if isinstance(calendar_item_type, str) and calendar_item_type.lower() in {
+        "exception",
+        "occurrence",
+    }:
         return True
     return False
 
@@ -155,15 +176,17 @@ def normalize_event(event: Mapping[str, Any], *, include_raw: bool = False) -> E
     if normalized_timezone is None:
         normalized_timezone = timezone or end_timezone
     payload: dict[str, Any] = {
-        "id": _first_present(event, ("id", "Id", "itemId", "ItemId")),
-        "occurrence_id": _first_present(
-            event,
-            ("occurrence_id", "occurrenceId", "OccurrenceId"),
+        "id": _extract_id(_first_present(event, ("id", "Id", "itemId", "ItemId"))),
+        "occurrence_id": _extract_id(
+            _first_present(
+                event,
+                ("occurrence_id", "occurrenceId", "OccurrenceId", "InstanceKey"),
+            )
         ),
         "subject": _first_present(event, ("subject", "Subject")),
         "start": start_value,
         "end": end_value,
-        "body": body_value,
+        "body": body_value or _first_present(event, ("Preview", "preview")),
         "body_type": _first_present(event, ("body_type", "bodyType")) or body_type or "text",
         "categories": categories or [],
         "meeting_link": meeting_link,

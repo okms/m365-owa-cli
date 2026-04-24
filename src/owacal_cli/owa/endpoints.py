@@ -14,6 +14,13 @@ class EndpointSpec:
 
 
 ENDPOINTS: dict[str, EndpointSpec] = {
+    "GetCalendarFolders": EndpointSpec(
+        action="GetCalendarFolders",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Fetch calendar folders so the default calendar id can be resolved",
+        query={"action": "GetCalendarFolders", "app": "Calendar"},
+    ),
     "GetCalendarView": EndpointSpec(
         action="GetCalendarView",
         method="POST",
@@ -42,6 +49,13 @@ ENDPOINTS: dict[str, EndpointSpec] = {
         purpose="Create a calendar event",
         query={"action": "CreateEvent", "app": "Calendar"},
     ),
+    "CreateItem": EndpointSpec(
+        action="CreateItem",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Create a calendar item in the default calendar",
+        query={"action": "CreateItem", "app": "Calendar"},
+    ),
     "UpdateEvent": EndpointSpec(
         action="UpdateEvent",
         method="POST",
@@ -55,6 +69,13 @@ ENDPOINTS: dict[str, EndpointSpec] = {
         path="/owa/service.svc",
         purpose="Delete a calendar event or occurrence",
         query={"action": "DeleteEvent", "app": "Calendar"},
+    ),
+    "DeleteItem": EndpointSpec(
+        action="DeleteItem",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Delete an item by id using OWA's generic item deletion action",
+        query={"action": "DeleteItem", "app": "Calendar"},
     ),
 }
 

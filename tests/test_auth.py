@@ -10,11 +10,10 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from owacal_cli.auth import auth_test, extract_token
+from owacal_cli.auth import auth_test, bookmarklet_payload, extract_token
 from owacal_cli.config import (
     CONFIG_DIR_ENV_VAR,
     CONFIG_ERROR,
-    OWA_ENDPOINT_NOT_IMPLEMENTED,
     UNSUPPORTED_OPERATION,
     OwacalError,
     connection_env_var_name,
@@ -86,17 +85,46 @@ def test_list_and_remove_connections_do_not_leak_tokens(monkeypatch, tmp_path):
     assert all(record["name"] != "work" for record in records_after)
 
 
-def test_auth_placeholders_raise_structured_errors(monkeypatch, tmp_path):
+def test_auth_test_probes_owa_when_token_resolves(monkeypatch, tmp_path):
     monkeypatch.setenv(CONFIG_DIR_ENV_VAR, str(tmp_path))
     set_token("work", "file-token")
 
-    with pytest.raises(OwacalError) as excinfo:
-        auth_test("work")
-    assert excinfo.value.code == OWA_ENDPOINT_NOT_IMPLEMENTED
-    assert excinfo.value.details["connection"] == "work"
+    calls = []
+
+    class FakeOWAClient:
+        def __init__(self, *, connection, token):
+            calls.append((connection, token))
+
+        def probe(self):
+            calls.append("probe")
+
+    monkeypatch.setattr("owacal_cli.auth.OWAClient", FakeOWAClient)
+
+    auth_test("work")
+
+    assert calls == [("work", "file-token"), "probe"]
+
+
+def test_extract_token_placeholder_raises_structured_error(monkeypatch, tmp_path):
+    monkeypatch.setenv(CONFIG_DIR_ENV_VAR, str(tmp_path))
 
     with pytest.raises(OwacalError) as excinfo:
         extract_token("work")
     assert excinfo.value.code == UNSUPPORTED_OPERATION
     assert excinfo.value.details["connection"] == "work"
     assert excinfo.value.details["env_var"] == connection_env_var_name("work")
+
+
+def test_bookmarklet_payload_is_local_only_and_host_restricted():
+    payload = bookmarklet_payload("work")
+    bookmarklet = payload["bookmarklet"]
+
+    assert payload["connection"] == "work"
+    assert bookmarklet.startswith("javascript:")
+    assert "outlook.cloud.microsoft" in bookmarklet
+    assert "outlook.office.com" in bookmarklet
+    assert "/owa/service.svc" in bookmarklet
+    assert "fetch(" not in bookmarklet
+    assert "XMLHttpRequest" in bookmarklet
+    assert "navigator.clipboard.writeText" in bookmarklet
+    assert "secret-token-value" not in json.dumps(payload)

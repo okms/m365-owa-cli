@@ -45,6 +45,7 @@ def test_capabilities_payload_shape() -> None:
         "env",
         "token_file",
         "direct_token",
+        "bookmarklet",
         "edge_best_effort",
     ]
 
@@ -60,6 +61,7 @@ def test_schema_payload_shapes() -> None:
     command_names = {item["name"] for item in commands_payload["data"]["commands"]}
     assert "events list" in command_names
     assert "schema event" in command_names
+    assert "auth bookmarklet" in command_names
     assert "events delete" in command_names
 
     assert event_payload["ok"] is True

@@ -50,3 +50,19 @@ def test_normalize_event_marks_private_and_preserves_raw_when_requested():
     assert event.is_occurrence is True
     assert event.occurrence_id == "AAMk-2/occurrence"
     assert event.raw_owa == payload
+
+
+def test_normalize_event_treats_owa_exception_as_occurrence():
+    event = normalize_event(
+        {
+            "ItemId": {"Id": "event-1"},
+            "Subject": "Changed recurring event",
+            "Start": "2026-04-24T10:00:00",
+            "End": "2026-04-24T11:00:00",
+            "IsRecurring": True,
+            "CalendarItemType": "Exception",
+        }
+    )
+
+    assert event.is_recurring is True
+    assert event.is_occurrence is True

@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
 from typing import Any, Mapping
+from urllib.parse import urlencode
 
-from owacal_cli.errors import OWA_ENDPOINT_NOT_IMPLEMENTED, OwacalError, redact_tokens
+import httpx
+
+from owacal_cli.errors import (
+    AUTH_EXPIRED,
+    NORMALIZATION_ERROR,
+    OWA_BACKEND_ERROR,
+    OWA_ENDPOINT_NOT_IMPLEMENTED,
+    OwacalError,
+    redact_tokens,
+)
 
 from .endpoints import get_endpoint
+from .normalize import normalize_event
 from .requests import (
     OwaRequest,
     build_create_event_request,
@@ -18,6 +30,70 @@ from .requests import (
 
 def _redact_value(value: Any) -> Any:
     return redact_tokens(value)
+
+
+def _ensure_bearer(token: str | None) -> str | None:
+    if token is None:
+        return None
+    return token if token.lower().startswith("bearer ") else f"Bearer {token}"
+
+
+def _format_owa_range_boundary(value: Any, *, end: bool = False) -> str:
+    if isinstance(value, datetime):
+        base = value.replace(tzinfo=None).isoformat(timespec="seconds")
+    elif isinstance(value, date):
+        base = f"{value.isoformat()}T00:00:00"
+    else:
+        text = str(value)
+        if "T" in text:
+            base = text.split("+", 1)[0].replace("Z", "")
+        else:
+            base = f"{text}T00:00:00"
+    suffix = ".000" if end else ".001"
+    return base.split(".", 1)[0] + suffix
+
+
+def _coerce_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                parsed_date = date.fromisoformat(value)
+            except ValueError:
+                return None
+            return datetime.combine(parsed_date, datetime.min.time())
+    return None
+
+
+def _format_create_datetime(value: Any) -> str:
+    parsed = _coerce_datetime(value)
+    if parsed is None:
+        return str(value)
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed.isoformat(timespec="seconds") + ".000"
+
+
+def _is_all_day_range(start: Any, end: Any) -> bool:
+    parsed_start = _coerce_datetime(start)
+    parsed_end = _coerce_datetime(end)
+    if parsed_start is None or parsed_end is None:
+        return False
+    if parsed_start.tzinfo is not None:
+        parsed_start = parsed_start.astimezone(timezone.utc).replace(tzinfo=None)
+    if parsed_end.tzinfo is not None:
+        parsed_end = parsed_end.astimezone(timezone.utc).replace(tzinfo=None)
+    return (
+        parsed_start.time() == datetime.min.time()
+        and parsed_end.time() == datetime.min.time()
+        and (parsed_end - parsed_start).days >= 1
+        and (parsed_end - parsed_start).seconds == 0
+    )
 
 
 class OWAEndpointNotImplementedError(OwacalError):
@@ -42,10 +118,13 @@ class OWAClient:
         connection: str | None = None,
         token: str | None = None,
         base_url: str = "https://outlook.cloud.microsoft",
+        http_client: httpx.Client | None = None,
+        timeout: float = 30.0,
     ) -> None:
         self.connection = connection
         self.token = token
         self.base_url = base_url.rstrip("/")
+        self.http_client = http_client or httpx.Client(timeout=timeout)
 
     def __repr__(self) -> str:
         token = "***REDACTED***" if self.token else None
@@ -70,9 +149,192 @@ class OWAClient:
         payload.update(details)
         raise OWAEndpointNotImplementedError(details=_redact_value(payload))
 
+    def _headers(self, action: str) -> dict[str, str]:
+        headers = {
+            "Accept": "application/json",
+            "Action": action,
+            "Content-Type": "application/json; charset=utf-8",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+        authorization = _ensure_bearer(self.token)
+        if authorization:
+            headers["Authorization"] = authorization
+        return headers
+
+    def _url(self, endpoint_name: str) -> str:
+        endpoint = get_endpoint(endpoint_name)
+        query = urlencode(dict(endpoint.query))
+        return f"{self.base_url}{endpoint.path}?{query}"
+
+    def _post_json(self, endpoint_name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        endpoint = get_endpoint(endpoint_name)
+        url = self._url(endpoint_name)
+        try:
+            response = self.http_client.post(
+                url,
+                headers=self._headers(endpoint.action),
+                json=dict(payload),
+            )
+        except httpx.HTTPError as exc:
+            raise OwacalError(
+                OWA_BACKEND_ERROR,
+                f"OWA request failed for {endpoint.action}.",
+                retryable=True,
+                details={
+                    "action": endpoint.action,
+                    "url": url,
+                    "error": str(exc),
+                    "exception_type": type(exc).__name__,
+                },
+            ) from exc
+
+        details: dict[str, Any] = {
+            "action": endpoint.action,
+            "url": url,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type"),
+        }
+        if response.status_code in {401, 403}:
+            raise OwacalError(
+                AUTH_EXPIRED,
+                "OWA bearer token expired or was rejected.",
+                retryable=False,
+                details=details,
+            )
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            details["response_preview"] = response.text[:500]
+            raise OwacalError(
+                OWA_BACKEND_ERROR,
+                "OWA returned a non-JSON response.",
+                retryable=response.status_code >= 500,
+                details=details,
+            ) from exc
+
+        body = data.get("Body") if isinstance(data, Mapping) else None
+        response_code = body.get("ResponseCode") if isinstance(body, Mapping) else None
+        response_class = body.get("ResponseClass") if isinstance(body, Mapping) else None
+        if response.status_code >= 400 or (
+            isinstance(response_code, str) and response_code.lower() != "noerror"
+        ):
+            details["owa_response"] = data
+            message = "OWA returned an error response."
+            if response_code:
+                message = f"OWA returned {response_code}."
+            raise OwacalError(
+                OWA_BACKEND_ERROR,
+                message,
+                retryable=response.status_code >= 500 or response_class == "Error",
+                details=details,
+            )
+        return dict(data)
+
+    def get_default_calendar_folder_id(self) -> dict[str, Any]:
+        data = self._post_json("GetCalendarFolders", {})
+        groups = data.get("CalendarGroups")
+        if not isinstance(groups, list):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "OWA calendar folder response did not include CalendarGroups.",
+                details={"response_keys": sorted(data.keys())},
+            )
+        fallback: dict[str, Any] | None = None
+        for group in groups:
+            if not isinstance(group, Mapping):
+                continue
+            calendars = group.get("Calendars")
+            if not isinstance(calendars, list):
+                continue
+            for calendar in calendars:
+                if not isinstance(calendar, Mapping):
+                    continue
+                folder_id = calendar.get("CalendarFolderId")
+                if isinstance(folder_id, Mapping) and folder_id.get("Id"):
+                    if fallback is None:
+                        fallback = dict(folder_id)
+                    if calendar.get("IsDefaultCalendar"):
+                        return dict(folder_id)
+        if fallback is not None:
+            return fallback
+        raise OwacalError(
+            NORMALIZATION_ERROR,
+            "OWA calendar folder response did not include a usable calendar folder id.",
+            details={"calendar_group_count": len(groups)},
+        )
+
+    def probe(self) -> None:
+        self.get_default_calendar_folder_id()
+
+    def _calendar_view_payload(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        payload = request.get("payload", {})
+        range_payload = payload.get("range", {}) if isinstance(payload, Mapping) else {}
+        if not isinstance(range_payload, Mapping):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "events.list request did not include a usable range payload.",
+                details={"request": request},
+            )
+        folder_id = self.get_default_calendar_folder_id()
+        return {
+            "__type": "GetCalendarViewJsonRequest:#Exchange",
+            "Header": {
+                "__type": "JsonRequestHeaders:#Exchange",
+                "RequestServerVersion": "Exchange2013",
+            },
+            "Body": {
+                "__type": "GetCalendarViewRequest:#Exchange",
+                "CalendarId": {
+                    "__type": "TargetFolderId:#Exchange",
+                    "BaseFolderId": folder_id,
+                },
+                "RangeStart": _format_owa_range_boundary(range_payload.get("start")),
+                "RangeEnd": _format_owa_range_boundary(range_payload.get("end"), end=True),
+            },
+        }
+
+    def _extract_calendar_items(self, data: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+        body = data.get("Body")
+        if not isinstance(body, Mapping):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "OWA calendar view response did not include a Body object.",
+                details={"response_keys": sorted(data.keys())},
+            )
+        items = body.get("Items")
+        if not isinstance(items, list):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "OWA calendar view response did not include an Items list.",
+                details={"body_keys": sorted(str(key) for key in body.keys())},
+            )
+        return [item for item in items if isinstance(item, Mapping)]
+
     def list_events(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
-        self._not_implemented("events.list", "GetCalendarView", request=kwargs.get("request"))
-        return []
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "events.list requires a structured OWA request.",
+                details={"request": request},
+            )
+        include_raw = bool(kwargs.get("include_raw", False))
+        request_payload = request.get("payload", {})
+        include_private = (
+            bool(request_payload.get("include_private", False))
+            if isinstance(request_payload, Mapping)
+            else False
+        )
+        payload = self._calendar_view_payload(request)
+        data = self._post_json("GetCalendarView", payload)
+        events = []
+        for item in self._extract_calendar_items(data):
+            event = normalize_event(item, include_raw=include_raw)
+            if event.is_private and not include_private:
+                continue
+            events.append(event.to_dict(include_raw=include_raw))
+        return events
 
     def get_event(self, *_, **kwargs: Any) -> dict[str, Any]:
         self._not_implemented("events.get", "GetEvent", request=kwargs.get("request"))
@@ -82,16 +344,186 @@ class OWAClient:
         self._not_implemented("events.search", "SearchEvents", request=kwargs.get("request"))
         return []
 
+    def _create_item_payload(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        payload = request.get("payload", {})
+        if not isinstance(payload, Mapping):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "events.create request did not include a usable payload.",
+                details={"request": request},
+            )
+        subject = payload.get("subject")
+        start = payload.get("start")
+        end = payload.get("end")
+        if not subject or not start or not end:
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "events.create request requires subject, start, and end.",
+                details={"payload": payload},
+            )
+
+        item: dict[str, Any] = {
+            "__type": "CalendarItem:#Exchange",
+            "Subject": str(subject),
+            "Start": _format_create_datetime(start),
+            "End": _format_create_datetime(end),
+            "IsAllDayEvent": _is_all_day_range(start, end),
+            "ReminderIsSet": False,
+        }
+        body = payload.get("body")
+        if body:
+            body_type = str(payload.get("body_type") or "text")
+            item["Body"] = {
+                "__type": "BodyContentType:#Exchange",
+                "BodyType": "HTML" if body_type.lower() == "html" else "Text",
+                "Value": str(body),
+            }
+        categories = payload.get("categories")
+        if isinstance(categories, list) and categories:
+            item["Categories"] = [str(category) for category in categories]
+
+        return {
+            "__type": "CreateItemJsonRequest:#Exchange",
+            "Header": {
+                "__type": "JsonRequestHeaders:#Exchange",
+                "RequestServerVersion": "Exchange2013",
+            },
+            "Body": {
+                "__type": "CreateItemRequest:#Exchange",
+                "Items": [item],
+                "SendMeetingInvitations": "SendToNone",
+            },
+        }
+
+    def _extract_created_item(self, data: Mapping[str, Any]) -> Mapping[str, Any]:
+        body = data.get("Body")
+        messages = body.get("ResponseMessages") if isinstance(body, Mapping) else None
+        items = messages.get("Items") if isinstance(messages, Mapping) else None
+        if not isinstance(items, list) or not items:
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "OWA create response did not include response messages.",
+                details={"response_keys": sorted(data.keys())},
+            )
+        message = items[0]
+        if not isinstance(message, Mapping):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "OWA create response message had an unexpected shape.",
+                details={"message": message},
+            )
+        if str(message.get("ResponseClass", "")).lower() != "success" and str(
+            message.get("ResponseCode", "")
+        ).lower() != "noerror":
+            raise OwacalError(
+                OWA_BACKEND_ERROR,
+                "OWA returned an error while creating an event.",
+                retryable=False,
+                details={"create_error": message},
+            )
+        created_items = message.get("Items")
+        if not isinstance(created_items, list) or not created_items:
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "OWA create response did not include a created item.",
+                details={"message_keys": sorted(str(key) for key in message.keys())},
+            )
+        created_item = created_items[0]
+        if not isinstance(created_item, Mapping):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "OWA created item had an unexpected shape.",
+                details={"created_item": created_item},
+            )
+        return created_item
+
     def create_event(self, *_, **kwargs: Any) -> dict[str, Any]:
-        self._not_implemented("events.create", "CreateEvent", request=kwargs.get("request"))
-        return {}
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "events.create requires a structured OWA request.",
+                details={"request": request},
+            )
+        request_payload = request.get("payload", {})
+        data = self._post_json("CreateItem", self._create_item_payload(request))
+        created_item = dict(self._extract_created_item(data))
+        if isinstance(request_payload, Mapping):
+            created_item.setdefault("Subject", request_payload.get("subject"))
+            created_item.setdefault("Start", request_payload.get("start"))
+            created_item.setdefault("End", request_payload.get("end"))
+            if request_payload.get("categories"):
+                created_item.setdefault("Categories", request_payload.get("categories"))
+        return normalize_event(created_item).to_dict()
 
     def update_event(self, *_, **kwargs: Any) -> dict[str, Any]:
         self._not_implemented("events.update", "UpdateEvent", request=kwargs.get("request"))
         return {}
 
+    def _delete_item_payload(self, event_id: str) -> dict[str, Any]:
+        return {
+            "__type": "DeleteItemJsonRequest:#Exchange",
+            "Header": {
+                "__type": "JsonRequestHeaders:#Exchange",
+                "RequestServerVersion": "Exchange2013",
+            },
+            "Body": {
+                "__type": "DeleteItemRequest:#Exchange",
+                "ItemIds": [
+                    {
+                        "__type": "ItemId:#Exchange",
+                        "Id": event_id,
+                    }
+                ],
+                "DeleteType": "MoveToDeletedItems",
+                "SendMeetingCancellations": "SendToNone",
+                "AffectedTaskOccurrences": "SpecifiedOccurrenceOnly",
+            },
+        }
+
+    def _raise_delete_response_errors(self, data: Mapping[str, Any]) -> None:
+        body = data.get("Body")
+        messages = body.get("ResponseMessages") if isinstance(body, Mapping) else None
+        items = messages.get("Items") if isinstance(messages, Mapping) else None
+        if not isinstance(items, list) or not items:
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "OWA delete response did not include response messages.",
+                details={"response_keys": sorted(data.keys())},
+            )
+        errors = [
+            item
+            for item in items
+            if isinstance(item, Mapping)
+            and str(item.get("ResponseClass", "")).lower() != "success"
+            and str(item.get("ResponseCode", "")).lower() != "noerror"
+        ]
+        if errors:
+            raise OwacalError(
+                OWA_BACKEND_ERROR,
+                "OWA returned an error while deleting an event.",
+                retryable=False,
+                details={"delete_errors": errors},
+            )
+
     def delete_event(self, *_, **kwargs: Any) -> None:
-        self._not_implemented("events.delete", "DeleteEvent", request=kwargs.get("request"))
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "events.delete requires a structured OWA request.",
+                details={"request": request},
+            )
+        payload = request.get("payload", {})
+        event_id = payload.get("id") if isinstance(payload, Mapping) else None
+        if not event_id:
+            raise OwacalError(
+                NORMALIZATION_ERROR,
+                "events.delete request did not include an event id.",
+                details={"request": request},
+            )
+        data = self._post_json("DeleteItem", self._delete_item_payload(str(event_id)))
+        self._raise_delete_response_errors(data)
 
 
 def build_list_request(time_range, *, include_private: bool = False) -> OwaRequest:

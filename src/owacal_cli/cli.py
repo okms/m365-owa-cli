@@ -11,7 +11,7 @@ import typer
 from typer.core import TyperGroup
 
 from owacal_cli import __version__
-from owacal_cli.auth import auth_test, extract_token
+from owacal_cli.auth import auth_test, bookmarklet_payload, extract_token
 from owacal_cli.capabilities import capabilities_payload
 from owacal_cli.config import (
     list_connections as list_configured_connections,
@@ -25,7 +25,6 @@ from owacal_cli.errors import (
     CONFIG_ERROR,
     CONNECTION_NOT_FOUND,
     INVALID_ARGUMENTS,
-    OWA_ENDPOINT_NOT_IMPLEMENTED,
     OwacalError,
 )
 from owacal_cli.output import error_envelope, success_envelope
@@ -314,6 +313,22 @@ def auth_set_token(
         _emit(success_envelope(data, operation="auth.set-token", connection=connection), pretty=pretty)
     except OwacalError as exc:
         _exit_with_error(exc, operation="auth.set-token", connection=connection, pretty=pretty)
+
+
+@auth_app.command("bookmarklet")
+def auth_bookmarklet(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    raw: bool = typer.Option(False, "--raw", help="Print only the bookmarklet URL."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    try:
+        data = bookmarklet_payload(connection)
+        if raw:
+            typer.echo(data["bookmarklet"])
+            return
+        _emit(success_envelope(data, operation="auth.bookmarklet", connection=connection), pretty=pretty)
+    except OwacalError as exc:
+        _exit_with_error(exc, operation="auth.bookmarklet", connection=connection, pretty=pretty)
 
 
 @auth_app.command("remove-token")

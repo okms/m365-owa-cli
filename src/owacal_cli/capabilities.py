@@ -22,6 +22,7 @@ def capabilities_data() -> dict[str, Any]:
             "env",
             "token_file",
             "direct_token",
+            "bookmarklet",
             "edge_best_effort",
         ],
     }

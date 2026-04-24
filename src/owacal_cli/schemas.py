@@ -48,6 +48,12 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
         "optional_args": ["--token"],
     },
     {
+        "name": "auth bookmarklet",
+        "summary": "Generate a browser bookmarklet for manual OWA bearer capture.",
+        "required_args": ["--connection"],
+        "optional_args": ["--raw"],
+    },
+    {
         "name": "auth remove-token",
         "summary": "Remove a connection token.",
         "required_args": ["--connection"],
