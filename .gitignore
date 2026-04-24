@@ -9,3 +9,4 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+tests/fixtures/owa/raw/
