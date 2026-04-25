@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from m365_owa_cli.cli import app
+from m365_owa_cli.browser import BrowserBearerToken
 from m365_owa_cli.errors import OWA_BACKEND_ERROR, M365OwaError
 
 
@@ -82,6 +83,49 @@ def test_auth_bookmarklet_generates_inspectable_helper():
     assert raw_result.exit_code == 0
     assert raw_result.stdout.startswith("javascript:")
     assert '"ok"' not in raw_result.stdout
+
+
+def test_auth_extract_token_stores_browser_capture_without_leaking(monkeypatch, tmp_path):
+    monkeypatch.setenv("M365_OWA_CONFIG_DIR", str(tmp_path))
+
+    def fake_capture(**kwargs):
+        assert kwargs["browser"] == "edge"
+        assert kwargs["devtools_url"] == "http://127.0.0.1:9222"
+        assert kwargs["timeout_seconds"] == 0.5
+        assert kwargs["reload"] is True
+        return BrowserBearerToken(
+            token="Bearer captured-secret-token",
+            browser="edge",
+            devtools_url="http://127.0.0.1:9222",
+            page_url="https://outlook.office.com/calendar/view/week",
+            source="devtools_network",
+            captured_url="https://outlook.office.com/owa/service.svc?action=GetCalendarView",
+        )
+
+    monkeypatch.setattr("m365_owa_cli.auth.capture_browser_bearer_token", fake_capture)
+
+    result = runner.invoke(
+        app,
+        [
+            "auth",
+            "extract-token",
+            "--connection",
+            "work",
+            "--devtools-url",
+            "http://127.0.0.1:9222",
+            "--timeout",
+            "0.5",
+            "--reload",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = _json(result)
+    assert payload["ok"] is True
+    assert payload["operation"] == "auth.extract-token"
+    assert payload["data"]["stored"] is True
+    assert payload["data"]["captured_host"] == "outlook.office.com"
+    assert "captured-secret-token" not in result.stdout
 
 
 def test_delete_confirmation_failure_exits_before_auth(tmp_path, monkeypatch):

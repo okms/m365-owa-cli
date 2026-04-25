@@ -2,28 +2,26 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import time
+from urllib.parse import urlparse
 
 try:
     from .errors import (  # type: ignore
         AUTH_REQUIRED,
-        UNSUPPORTED_OPERATION,
         M365OwaError,
     )
 except ImportError:  # pragma: no cover - fallback for partial scaffolds
-    from .config import (
-        UNSUPPORTED_OPERATION,
-        M365OwaError,
-    )
+    from .config import M365OwaError
     AUTH_REQUIRED = "AUTH_REQUIRED"
 
 from .config import (
-    connection_env_var_name,
     list_connections,
     remove_token,
     resolve_token,
     set_token,
     validate_connection_name,
 )
+from .browser import capture_browser_bearer_token
 from .owa.client import OWAClient
 
 __all__ = [
@@ -222,23 +220,28 @@ def auth_test(
 def extract_token(
     connection: str,
     browser: str = "edge",
+    devtools_url: str | None = None,
+    timeout_seconds: float = 20.0,
+    reload: bool = False,
     config_dir: Path | None = None,
-) -> None:
+) -> dict:
     validate_connection_name(connection)
-    if browser.lower() != "edge":
-        raise M365OwaError(
-            UNSUPPORTED_OPERATION,
-            "Only Edge token extraction is considered for v1.",
-            retryable=False,
-            details={"browser": browser},
-        )
-    raise M365OwaError(
-        UNSUPPORTED_OPERATION,
-        "Browser token extraction is not implemented in this build.",
-        retryable=False,
-        details={
-            "browser": browser,
-            "connection": connection,
-            "env_var": connection_env_var_name(connection),
-        },
+    started_at = time.monotonic()
+    captured = capture_browser_bearer_token(
+        browser=browser,
+        devtools_url=devtools_url,
+        timeout_seconds=timeout_seconds,
+        reload=reload,
     )
+    path = set_token(connection, captured.token, config_dir=config_dir)
+    return {
+        "name": connection,
+        "browser": captured.browser,
+        "stored": True,
+        "token_file": str(path),
+        "source": captured.source,
+        "devtools_url": captured.devtools_url,
+        "page_url": captured.page_url,
+        "captured_host": urlparse(captured.captured_url).hostname,
+        "elapsed_ms": round((time.monotonic() - started_at) * 1000),
+    }
