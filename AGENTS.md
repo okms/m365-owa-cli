@@ -20,6 +20,7 @@ The CLI should favor stable machine interfaces over convenience: JSON by default
 - Backend is OWA service endpoints only, especially `/owa/service.svc`; do not add Microsoft Graph for v1.
 - Treat OWA as unstable and undocumented. Preserve enough raw response/error detail for later inspection, while redacting bearer tokens.
 - Support multiple named connections. Commands that talk to OWA should accept `--connection <name>`.
+- Use company, tenant, or environment specific connection names such as `crayon`, `softwareone`, `swon`, `work`, `personal`, `prod`, or `dev` instead of hidden global account state.
 - Default calendar only for v1. Shared, delegated, and explicit calendar selection are out of scope.
 - Private events are excluded by default unless explicitly included.
 - Recurring events must be handled as expanded occurrences. Refuse likely series/master mutation.
@@ -38,6 +39,20 @@ The CLI should favor stable machine interfaces over convenience: JSON by default
 ## Security Posture
 
 This is a personal-use tool. Plaintext bearer tokens and plaintext token files are acceptable, but tokens must not leak through logs, errors, test fixtures, or normal debug output.
+
+## Preferred Auth Capture Workflow
+
+Prefer browser DevTools capture over manual copy/paste:
+
+```bash
+m365-owa-cli auth extract-token --connection crayon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection softwareone --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection swon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+```
+
+Use `auth bookmarklet` only as a fallback when DevTools capture is unavailable. Never print, paste, commit, or document captured bearer values. Command output should contain only metadata such as connection name, source, host, token file path, and success/failure state.
+
+Connection tokens are local machine state under `~/.config/m365-owa-cli/connections/<connection>.token`; they are not repo artifacts. Do not copy those files into the repository, test fixtures, issues, PRs, screenshots, docs, or logs.
 
 ## Current Status
 

@@ -11,10 +11,14 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from m365_owa_cli.auth import auth_test, bookmarklet_payload, extract_token
+from m365_owa_cli.browser import (
+    BrowserBearerToken,
+    choose_owa_tab,
+    find_authorization_header,
+)
 from m365_owa_cli.config import (
     CONFIG_DIR_ENV_VAR,
     CONFIG_ERROR,
-    UNSUPPORTED_OPERATION,
     M365OwaError,
     connection_env_var_name,
     get_config_dir,
@@ -105,14 +109,38 @@ def test_auth_test_probes_owa_when_token_resolves(monkeypatch, tmp_path):
     assert calls == [("work", "file-token"), "probe"]
 
 
-def test_extract_token_placeholder_raises_structured_error(monkeypatch, tmp_path):
+def test_extract_token_stores_captured_browser_token_without_returning_it(monkeypatch, tmp_path):
     monkeypatch.setenv(CONFIG_DIR_ENV_VAR, str(tmp_path))
 
-    with pytest.raises(M365OwaError) as excinfo:
-        extract_token("work")
-    assert excinfo.value.code == UNSUPPORTED_OPERATION
-    assert excinfo.value.details["connection"] == "work"
-    assert excinfo.value.details["env_var"] == connection_env_var_name("work")
+    def fake_capture(**kwargs):
+        assert kwargs == {
+            "browser": "edge",
+            "devtools_url": "http://127.0.0.1:9222",
+            "timeout_seconds": 0.5,
+            "reload": True,
+        }
+        return BrowserBearerToken(
+            token="Bearer captured-secret-token",
+            browser="edge",
+            devtools_url="http://127.0.0.1:9222",
+            page_url="https://outlook.office.com/calendar/view/week",
+            source="devtools_network",
+            captured_url="https://outlook.office.com/owa/service.svc?action=GetCalendarView",
+        )
+
+    monkeypatch.setattr("m365_owa_cli.auth.capture_browser_bearer_token", fake_capture)
+
+    result = extract_token(
+        "work",
+        devtools_url="http://127.0.0.1:9222",
+        timeout_seconds=0.5,
+        reload=True,
+    )
+
+    assert result["stored"] is True
+    assert result["captured_host"] == "outlook.office.com"
+    assert read_token_file("work") == "Bearer captured-secret-token"
+    assert "captured-secret-token" not in json.dumps(result)
 
 
 def test_bookmarklet_payload_is_local_only_and_host_restricted():
@@ -128,3 +156,24 @@ def test_bookmarklet_payload_is_local_only_and_host_restricted():
     assert "XMLHttpRequest" in bookmarklet
     assert "navigator.clipboard.writeText" in bookmarklet
     assert "secret-token-value" not in json.dumps(payload)
+
+
+def test_browser_tab_selection_and_authorization_header_filtering():
+    assert choose_owa_tab(
+        [
+            {
+                "type": "page",
+                "url": "https://example.com",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/1",
+            },
+            {
+                "type": "page",
+                "url": "https://outlook.office.com/calendar/view/workweek",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/2",
+            },
+        ]
+    )["url"].startswith("https://outlook.office.com")
+
+    assert find_authorization_header({"Authorization": "Bearer value"}) == "Bearer value"
+    assert find_authorization_header({"authorization": "Basic value"}) is None
+    assert find_authorization_header({"x-authorization": "Bearer value"}) is None

@@ -361,11 +361,24 @@ def auth_test_command(
 def auth_extract_token(
     connection: str = typer.Option(..., "--connection", help="Connection name."),
     browser: str = typer.Option("edge", "--browser", help="Browser to inspect."),
+    devtools_url: str | None = typer.Option(
+        None,
+        "--devtools-url",
+        help="Chrome DevTools HTTP URL, for example http://127.0.0.1:9222.",
+    ),
+    timeout_seconds: float = typer.Option(20.0, "--timeout", min=0.1, help="Seconds to watch OWA traffic."),
+    reload: bool = typer.Option(False, "--reload", help="Reload the selected OWA tab after attaching."),
     pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
 ) -> None:
     try:
-        extract_token(connection, browser=browser)
-        _emit(success_envelope({"extracted": True}, operation="auth.extract-token", connection=connection), pretty=pretty)
+        data = extract_token(
+            connection,
+            browser=browser,
+            devtools_url=devtools_url,
+            timeout_seconds=timeout_seconds,
+            reload=reload,
+        )
+        _emit(success_envelope(data, operation="auth.extract-token", connection=connection), pretty=pretty)
     except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.extract-token", connection=connection, pretty=pretty)
 

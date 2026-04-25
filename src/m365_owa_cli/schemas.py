@@ -67,9 +67,9 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
     },
     {
         "name": "auth extract-token",
-        "summary": "Best-effort browser token extraction.",
+        "summary": "Best-effort browser token extraction through a DevTools-enabled OWA tab.",
         "required_args": ["--connection"],
-        "optional_args": ["--browser"],
+        "optional_args": ["--browser", "--devtools-url", "--timeout", "--reload"],
     },
     {
         "name": "events list",
