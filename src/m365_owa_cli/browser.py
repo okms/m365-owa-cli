@@ -9,7 +9,7 @@ import socket
 import struct
 import time
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -34,6 +34,28 @@ class BrowserBearerToken:
     page_url: str
     source: str
     captured_url: str
+
+
+@dataclass(frozen=True, slots=True)
+class BrowserTokenCredential:
+    access_token: str
+    refresh_token: str
+    token_type: str
+    expires_in: int | None
+    browser: str
+    devtools_url: str
+    page_url: str
+    source: str
+    captured_url: str
+    token_endpoint: str
+    client_id: str
+    scope: str | None
+    resource: str | None
+    redirect_uri: str | None
+    origin: str | None
+    client_info: str | None
+    claims: str | None
+    authority: str | None
 
 
 class _DevToolsWebSocket:
@@ -180,7 +202,7 @@ def capture_browser_bearer_token(
     devtools_url: str | None = None,
     timeout_seconds: float = 20.0,
     reload: bool = False,
-) -> BrowserBearerToken:
+) -> BrowserBearerToken | BrowserTokenCredential:
     normalized_browser = browser.lower()
     if normalized_browser not in SUPPORTED_BROWSERS:
         raise M365OwaError(
@@ -318,7 +340,7 @@ def _capture_from_tab(
     tab: dict[str, Any],
     timeout_seconds: float,
     reload: bool,
-) -> BrowserBearerToken | None:
+) -> BrowserBearerToken | BrowserTokenCredential | None:
     websocket_url = tab.get("webSocketDebuggerUrl")
     page_url = tab.get("url")
     if not isinstance(websocket_url, str) or not isinstance(page_url, str):
@@ -327,6 +349,7 @@ def _capture_from_tab(
     next_id = 0
     request_urls: dict[str, str] = {}
     pending_authorizations: dict[str, str] = {}
+    token_request_metadata: dict[str, dict[str, Any]] = {}
 
     def next_command_id() -> int:
         nonlocal next_id
@@ -357,6 +380,18 @@ def _capture_from_tab(
             )
             if captured is not None:
                 return captured
+            credential = _capture_token_response_from_cdp_event(
+                message,
+                websocket=websocket,
+                next_command_id=next_command_id,
+                browser=browser,
+                devtools_url=devtools_url,
+                page_url=page_url,
+                token_request_metadata=token_request_metadata,
+                deadline=deadline,
+            )
+            if credential is not None:
+                return credential
     return None
 
 
@@ -447,6 +482,81 @@ def _capture_authorization_from_cdp_event(
     return None
 
 
+def _capture_token_response_from_cdp_event(
+    message: dict[str, Any],
+    *,
+    websocket: _DevToolsWebSocket,
+    next_command_id: Any,
+    browser: str,
+    devtools_url: str,
+    page_url: str,
+    token_request_metadata: dict[str, dict[str, Any]],
+    deadline: float,
+) -> BrowserTokenCredential | None:
+    method = message.get("method")
+    params = message.get("params")
+    if not isinstance(method, str) or not isinstance(params, dict):
+        return None
+
+    request_id = params.get("requestId")
+    request_id_text = request_id if isinstance(request_id, str) else None
+    if not request_id_text:
+        return None
+
+    if method == "Network.requestWillBeSent":
+        request = params.get("request")
+        if isinstance(request, dict):
+            metadata = _parse_token_request_metadata(request)
+            if metadata is not None:
+                token_request_metadata[request_id_text] = metadata
+        return None
+
+    if method != "Network.loadingFinished" or request_id_text not in token_request_metadata:
+        return None
+
+    command_id = next_command_id()
+    websocket.send_json(
+        {
+            "id": command_id,
+            "method": "Network.getResponseBody",
+            "params": {"requestId": request_id_text},
+        }
+    )
+    while time.monotonic() < deadline:
+        response = websocket.receive_json(timeout=deadline - time.monotonic())
+        if not response:
+            continue
+        if response.get("id") != command_id:
+            continue
+        result = response.get("result")
+        if not isinstance(result, dict):
+            return None
+        body = result.get("body")
+        if not isinstance(body, str):
+            return None
+        if result.get("base64Encoded") is True:
+            try:
+                body = base64.b64decode(body).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                return None
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        metadata = token_request_metadata[request_id_text]
+        return _capture_credential_from_token_response(
+            payload,
+            request_metadata=metadata,
+            browser=browser,
+            devtools_url=devtools_url,
+            page_url=page_url,
+            captured_url=str(metadata["token_endpoint"]),
+        )
+    return None
+
+
 def find_authorization_header(headers: Any) -> str | None:
     if not isinstance(headers, dict):
         return None
@@ -457,6 +567,122 @@ def find_authorization_header(headers: Any) -> str | None:
         if value_text.lower().startswith("bearer ") and len(value_text.split(None, 1)) == 2:
             return value_text
     return None
+
+
+def _header_value(headers: Any, name: str) -> str | None:
+    if not isinstance(headers, dict):
+        return None
+    wanted = name.lower()
+    for key, value in headers.items():
+        if str(key).lower() == wanted:
+            return str(value)
+    return None
+
+
+def _first_form_value(form: dict[str, list[str]], name: str) -> str | None:
+    values = form.get(name)
+    if not values:
+        return None
+    return values[0]
+
+
+def _is_microsoft_identity_token_endpoint(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.hostname != "login.microsoftonline.com":
+        return False
+    return parsed.path.endswith("/token") and "/oauth2/" in parsed.path
+
+
+def _parse_token_request_metadata(request: dict[str, Any]) -> dict[str, Any] | None:
+    url = request.get("url")
+    if not isinstance(url, str) or not _is_microsoft_identity_token_endpoint(url):
+        return None
+    post_data = request.get("postData")
+    form = parse_qs(post_data if isinstance(post_data, str) else "", keep_blank_values=True)
+    headers = request.get("headers")
+    parsed = urlparse(url)
+    token_endpoint = parsed._replace(query="", fragment="").geturl()
+    metadata = {
+        "token_endpoint": token_endpoint,
+        "client_id": _first_form_value(form, "client_id"),
+        "grant_type": _first_form_value(form, "grant_type"),
+        "scope": _first_form_value(form, "scope"),
+        "resource": _first_form_value(form, "resource"),
+        "redirect_uri": _first_form_value(form, "redirect_uri"),
+        "origin": _header_value(headers, "origin"),
+        "client_info": _first_form_value(form, "client_info"),
+    }
+    claims = _first_form_value(form, "claims")
+    if claims is not None:
+        metadata["claims"] = claims
+    return metadata
+
+
+def _capture_credential_from_token_response(
+    response_json: dict[str, Any],
+    *,
+    request_metadata: dict[str, Any],
+    browser: str,
+    devtools_url: str,
+    page_url: str,
+    captured_url: str,
+) -> BrowserTokenCredential | None:
+    access_token = response_json.get("access_token")
+    refresh_token = response_json.get("refresh_token")
+    token_endpoint = request_metadata.get("token_endpoint")
+    client_id = request_metadata.get("client_id")
+    if not all(
+        isinstance(value, str) and value
+        for value in (access_token, refresh_token, token_endpoint, client_id)
+    ):
+        return None
+    expires_in_value = response_json.get("expires_in")
+    expires_in: int | None
+    try:
+        expires_in = int(float(str(expires_in_value))) if expires_in_value is not None else None
+    except (TypeError, ValueError):
+        expires_in = None
+    parsed_endpoint = urlparse(token_endpoint)
+    path_parts = [part for part in parsed_endpoint.path.split("/") if part]
+    authority = None
+    if path_parts:
+        authority = f"{parsed_endpoint.scheme}://{parsed_endpoint.netloc}/{path_parts[0]}"
+    return BrowserTokenCredential(
+        access_token=str(access_token),
+        refresh_token=str(refresh_token),
+        token_type=str(response_json.get("token_type") or "Bearer"),
+        expires_in=expires_in,
+        browser=browser,
+        devtools_url=devtools_url,
+        page_url=page_url,
+        source="devtools_token_response",
+        captured_url=captured_url,
+        token_endpoint=str(token_endpoint),
+        client_id=str(client_id),
+        scope=request_metadata.get("scope"),
+        resource=request_metadata.get("resource"),
+        redirect_uri=request_metadata.get("redirect_uri"),
+        origin=request_metadata.get("origin"),
+        client_info=request_metadata.get("client_info"),
+        claims=request_metadata.get("claims"),
+        authority=authority,
+    )
+
+
+def _safe_captured_credential_metadata(credential: BrowserTokenCredential | None) -> dict[str, Any]:
+    if credential is None:
+        return {"stored_access_token": False, "stored_refresh_token": False}
+    return {
+        "stored_access_token": bool(credential.access_token),
+        "stored_refresh_token": bool(credential.refresh_token),
+        "token_endpoint_host": urlparse(credential.token_endpoint).hostname,
+        "source": credential.source,
+        "client_id": credential.client_id,
+        "expires_in": credential.expires_in,
+    }
 
 
 def _is_allowed_owa_url(url: str) -> bool:

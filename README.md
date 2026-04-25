@@ -41,10 +41,10 @@ m365-owa-cli events list --connection prod --day 2026-04-24
 
 ## Browser Token Capture
 
-Preferred method: watch a DevTools-enabled Edge or Chrome tab and store the first OWA service bearer header it observes. Open Outlook on the web in that browser first:
+Preferred method: watch a DevTools-enabled Edge or Chrome tab and store OWA auth material from browser traffic. Open Outlook on the web in that browser first. On macOS, use a reusable debug profile so Chrome first-run and search-engine-choice prompts do not come back every session:
 
 ```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222
+open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.config/m365-owa-cli/chrome-devtools-profile" --no-first-run --no-default-browser-check --disable-search-engine-choice-screen https://outlook.office.com/calendar/
 ```
 
 Capture per connection:
@@ -55,15 +55,16 @@ m365-owa-cli auth extract-token --connection softwareone --browser chrome --devt
 m365-owa-cli auth extract-token --connection swon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
 ```
 
-Each command stores a separate local token file:
+Each command stores separate local auth state:
 
 ```text
 ~/.config/m365-owa-cli/connections/crayon.token
 ~/.config/m365-owa-cli/connections/softwareone.token
 ~/.config/m365-owa-cli/connections/swon.token
+~/.config/m365-owa-cli/connections/crayon.credential.json
 ```
 
-The command only accepts bearer headers from known Outlook hosts on `/owa/service.svc`; it stores the token locally and emits metadata only. If the capture times out, interact with the open Calendar tab and retry without `--reload`.
+The command only accepts bearer headers from known Outlook hosts on `/owa/service.svc` and Microsoft identity token responses from `login.microsoftonline.com`; it stores secrets locally and emits metadata only. If the capture times out, interact with the open Calendar tab and retry without `--reload`.
 
 ## Manual Token Capture Fallback
 
@@ -78,7 +79,7 @@ Create a browser bookmark with the generated value as the URL, open Outlook on t
 ## Opsec
 
 - Do not print, paste, commit, screenshot, or document bearer token values.
-- Do not copy `~/.config/m365-owa-cli/connections/*.token` into this repository.
+- Do not copy `~/.config/m365-owa-cli/connections/*.token` or `*.credential.json` into this repository.
 - Use `--connection` names like `crayon`, `softwareone`, `swon`, `prod`, `dev`, or another explicit company/environment name so agents never depend on hidden account state.
 - Keep remote debugging bound to the local machine, for example `http://127.0.0.1:9222`.
 - Prefer JSON command output and rely on built-in redaction for errors; do not add ad hoc debug logging around auth headers.

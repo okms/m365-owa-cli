@@ -60,6 +60,18 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
         "optional_args": [],
     },
     {
+        "name": "auth inspect",
+        "summary": "Inspect non-secret connection credential metadata.",
+        "required_args": ["--connection"],
+        "optional_args": [],
+    },
+    {
+        "name": "auth refresh",
+        "summary": "Refresh a stored OWA access token using captured refresh-token metadata.",
+        "required_args": ["--connection"],
+        "optional_args": [],
+    },
+    {
         "name": "auth test",
         "summary": "Test authentication for a connection.",
         "required_args": ["--connection"],

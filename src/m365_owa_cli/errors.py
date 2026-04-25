@@ -10,6 +10,7 @@ from typing import Any, Mapping
 INVALID_ARGUMENTS = "INVALID_ARGUMENTS"
 AUTH_REQUIRED = "AUTH_REQUIRED"
 AUTH_EXPIRED = "AUTH_EXPIRED"
+AUTH_REFRESH_FAILED = "AUTH_REFRESH_FAILED"
 CONNECTION_NOT_FOUND = "CONNECTION_NOT_FOUND"
 TOKEN_FILE_ERROR = "TOKEN_FILE_ERROR"
 OWA_BACKEND_ERROR = "OWA_BACKEND_ERROR"
@@ -35,6 +36,7 @@ ERROR_SPECS: tuple[ErrorSpec, ...] = (
     ErrorSpec(INVALID_ARGUMENTS, 2, False, "Invalid arguments were provided."),
     ErrorSpec(AUTH_REQUIRED, 3, False, "OWA authentication is required."),
     ErrorSpec(AUTH_EXPIRED, 3, False, "OWA bearer token expired or was rejected."),
+    ErrorSpec(AUTH_REFRESH_FAILED, 3, False, "OWA authentication refresh failed."),
     ErrorSpec(CONNECTION_NOT_FOUND, 9, False, "The requested connection was not found."),
     ErrorSpec(TOKEN_FILE_ERROR, 9, False, "The connection token file could not be read or written."),
     ErrorSpec(OWA_BACKEND_ERROR, 10, True, "OWA returned an error response."),
@@ -188,7 +190,7 @@ def _redact_any(value: Any, *, seen: set[int]) -> Any:
         redacted: dict[str, Any] = {}
         for key, item in value.items():
             if _is_sensitive_key(key):
-                redacted[str(key)] = "[REDACTED]"
+                redacted[str(key)] = item if isinstance(item, bool) or item is None else "[REDACTED]"
             else:
                 redacted[str(key)] = _redact_any(item, seen=seen)
         seen.remove(value_id)

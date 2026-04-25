@@ -44,6 +44,14 @@ This is a personal-use tool. Plaintext bearer tokens and plaintext token files a
 
 Prefer browser DevTools capture over manual copy/paste:
 
+When a DevTools browser is not already running, launch a dedicated reusable Chrome profile on macOS with:
+
+```bash
+open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.config/m365-owa-cli/chrome-devtools-profile" --no-first-run --no-default-browser-check --disable-search-engine-choice-screen https://outlook.office.com/calendar/
+```
+
+Use the persistent `chrome-devtools-profile` path above instead of temporary profiles so account selection, browser first-run state, and search-engine-choice state are retained across sessions. The `--disable-search-engine-choice-screen` flag avoids Chrome's default search engine prompt. Keep DevTools bound to loopback and close the debug Chrome when done if no further capture is needed.
+
 ```bash
 m365-owa-cli auth extract-token --connection crayon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
 m365-owa-cli auth extract-token --connection softwareone --browser chrome --devtools-url http://127.0.0.1:9222 --reload
@@ -52,7 +60,7 @@ m365-owa-cli auth extract-token --connection swon --browser chrome --devtools-ur
 
 Use `auth bookmarklet` only as a fallback when DevTools capture is unavailable. Never print, paste, commit, or document captured bearer values. Command output should contain only metadata such as connection name, source, host, token file path, and success/failure state.
 
-Connection tokens are local machine state under `~/.config/m365-owa-cli/connections/<connection>.token`; they are not repo artifacts. Do not copy those files into the repository, test fixtures, issues, PRs, screenshots, docs, or logs.
+Connection tokens and refresh credentials are local machine state under `~/.config/m365-owa-cli/connections/`; they are not repo artifacts. Do not copy `.token` or `.credential.json` files into the repository, test fixtures, issues, PRs, screenshots, docs, or logs.
 
 ## Current Status
 

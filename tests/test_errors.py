@@ -59,6 +59,8 @@ def test_redact_tokens_nested_structures() -> None:
         "nested": {
             "message": "use Bearer zyxwvutsrqpon",
             "token_value": "keep-out",
+            "stored_refresh_token": True,
+            "rotated_refresh_token": False,
             "extra": [
                 "M365_OWA_TOKEN_WORK=supersecretvalue",
                 {"access_token": "plainsecret"},
@@ -72,6 +74,8 @@ def test_redact_tokens_nested_structures() -> None:
     assert redacted["authorization"] == "[REDACTED]"
     assert redacted["nested"]["message"] == "use Bearer [REDACTED]"
     assert redacted["nested"]["token_value"] == "[REDACTED]"
+    assert redacted["nested"]["stored_refresh_token"] is True
+    assert redacted["nested"]["rotated_refresh_token"] is False
     assert redacted["nested"]["extra"][0] == "M365_OWA_TOKEN_WORK=[REDACTED]"
     assert redacted["nested"]["extra"][1]["access_token"] == "[REDACTED]"
     assert redacted["other"] == "visible"

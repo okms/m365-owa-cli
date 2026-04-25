@@ -19,11 +19,13 @@ Connection names may contain letters, digits, dot, underscore, and dash.
 
 Use DevTools browser capture first. It is the preferred auth workflow because it avoids manually copying bearer tokens through chats, shell history, notes, screenshots, and docs.
 
-Start Chrome with a local DevTools port and open Outlook on the web:
+Start Chrome with a local DevTools port and open Outlook on the web. On macOS, prefer this reusable debug profile:
 
 ```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222
+open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.config/m365-owa-cli/chrome-devtools-profile" --no-first-run --no-default-browser-check --disable-search-engine-choice-screen https://outlook.office.com/calendar/
 ```
+
+The persistent `chrome-devtools-profile` keeps account selection and first-run state between sessions. `--disable-search-engine-choice-screen` suppresses Chrome's default search engine prompt. If Chrome is already running on `127.0.0.1:9222`, reuse it instead of launching another instance.
 
 Then capture and store the token for the intended connection:
 
@@ -63,10 +65,11 @@ m365-owa-cli auth list-connections
 
 ## Storage
 
-Captured tokens are stored outside the repository:
+Captured tokens and refresh credentials are stored outside the repository:
 
 ```text
 ~/.config/m365-owa-cli/connections/<connection>.token
+~/.config/m365-owa-cli/connections/<connection>.credential.json
 ```
 
 Examples:
@@ -75,6 +78,7 @@ Examples:
 ~/.config/m365-owa-cli/connections/crayon.token
 ~/.config/m365-owa-cli/connections/softwareone.token
 ~/.config/m365-owa-cli/connections/swon.token
+~/.config/m365-owa-cli/connections/crayon.credential.json
 ```
 
 These files are local machine state, not project files.

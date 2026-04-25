@@ -11,16 +11,24 @@ import typer
 from typer.core import TyperGroup
 
 from m365_owa_cli import __version__
-from m365_owa_cli.auth import auth_test, bookmarklet_payload, extract_token
+from m365_owa_cli.auth import (
+    auth_test,
+    bookmarklet_payload,
+    extract_token,
+    inspect_connection,
+    refresh_connection_token,
+    resolve_connection_access_token,
+)
 from m365_owa_cli.capabilities import capabilities_payload
 from m365_owa_cli.config import (
     list_connections as list_configured_connections,
+    read_credential,
     read_token_file,
     remove_token as remove_connection_token,
-    resolve_token,
     set_token as store_connection_token,
 )
 from m365_owa_cli.errors import (
+    AUTH_EXPIRED,
     AUTH_REQUIRED,
     CONFIG_ERROR,
     CONNECTION_NOT_FOUND,
@@ -172,11 +180,11 @@ def _invalid(message: str, *, details: dict[str, Any] | None = None) -> M365OwaE
 
 
 def _resolve_required_token(connection: str, token: str | None) -> str:
-    resolved = resolve_token(connection, token=token)
+    resolved = resolve_connection_access_token(connection, token=token)
     if resolved:
         return resolved
 
-    if read_token_file(connection) is None:
+    if read_token_file(connection) is None and read_credential(connection) is None:
         raise M365OwaError(
             CONNECTION_NOT_FOUND,
             f"No token source found for connection {connection!r}.",
@@ -187,6 +195,27 @@ def _resolve_required_token(connection: str, token: str | None) -> str:
         f"Token for connection {connection!r} is empty.",
         details={"connection": connection},
     )
+
+
+def _run_with_owa_client(
+    connection: str,
+    token: str | None,
+    operation: Any,
+) -> Any:
+    resolved_token = _resolve_required_token(connection, token)
+    client = OWAClient(connection=connection, token=resolved_token)
+    try:
+        return operation(client)
+    except M365OwaError as exc:
+        if exc.code != AUTH_EXPIRED or token is not None:
+            raise
+        credential = read_credential(connection)
+        if not credential or not credential.get("refresh_token"):
+            raise
+        refresh_connection_token(connection)
+        refreshed_token = _resolve_required_token(connection, token=None)
+        refreshed_client = OWAClient(connection=connection, token=refreshed_token)
+        return operation(refreshed_client)
 
 
 def _read_body(body: str | None, body_file: Path | None) -> str | None:
@@ -344,6 +373,30 @@ def auth_remove_token(
         _exit_with_error(exc, operation="auth.remove-token", connection=connection, pretty=pretty)
 
 
+@auth_app.command("inspect")
+def auth_inspect(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    try:
+        data = inspect_connection(connection)
+        _emit(success_envelope(data, operation="auth.inspect", connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation="auth.inspect", connection=connection, pretty=pretty)
+
+
+@auth_app.command("refresh")
+def auth_refresh(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    try:
+        data = refresh_connection_token(connection)
+        _emit(success_envelope(data, operation="auth.refresh", connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation="auth.refresh", connection=connection, pretty=pretty)
+
+
 @auth_app.command("test")
 def auth_test_command(
     connection: str = typer.Option(..., "--connection", help="Connection name."),
@@ -396,10 +449,12 @@ def events_list(
     operation = "events.list"
     try:
         time_range = _range_for_list(day, week)
-        resolved_token = _resolve_required_token(connection, token)
         request = build_list_request(time_range, include_private=include_private)
-        client = OWAClient(connection=connection, token=resolved_token)
-        events = client.list_events(request=request.to_dict(), include_raw=include_raw)
+        events = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.list_events(request=request.to_dict(), include_raw=include_raw),
+        )
         _emit(
             success_envelope(events, operation=operation, connection=connection, range=time_range.to_dict()),
             pretty=pretty,
@@ -418,10 +473,12 @@ def events_get(
 ) -> None:
     operation = "events.get"
     try:
-        resolved_token = _resolve_required_token(connection, token)
         request = build_get_request(event_id, include_raw=include_raw)
-        client = OWAClient(connection=connection, token=resolved_token)
-        event = client.get_event(request=request.to_dict(), include_raw=include_raw)
+        event = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.get_event(request=request.to_dict(), include_raw=include_raw),
+        )
         _emit(success_envelope(event, operation=operation, connection=connection), pretty=pretty)
     except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
@@ -441,7 +498,6 @@ def events_search(
     operation = "events.search"
     try:
         search_range = _range_for_search(from_date, to_date)
-        resolved_token = _resolve_required_token(connection, token)
         request = build_search_request(
             query,
             time_range=_as_request_range(search_range),
@@ -450,8 +506,11 @@ def events_search(
         request_dict = request.to_dict()
         if isinstance(search_range, dict):
             request_dict["payload"]["range"] = search_range
-        client = OWAClient(connection=connection, token=resolved_token)
-        events = client.search_events(request=request_dict, include_raw=include_raw)
+        events = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.search_events(request=request_dict, include_raw=include_raw),
+        )
         range_payload = search_range.to_dict() if isinstance(search_range, TimeRange) else search_range
         _emit(
             success_envelope(events, operation=operation, connection=connection, range=range_payload),
@@ -498,9 +557,11 @@ def events_create(
                 pretty=pretty,
             )
             return
-        resolved_token = _resolve_required_token(connection, token)
-        client = OWAClient(connection=connection, token=resolved_token)
-        event = client.create_event(request=request.to_dict())
+        event = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.create_event(request=request.to_dict()),
+        )
         _emit(success_envelope(event, operation=operation, connection=connection), pretty=pretty)
     except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
@@ -550,9 +611,11 @@ def events_update(
                 pretty=pretty,
             )
             return
-        resolved_token = _resolve_required_token(connection, token)
-        client = OWAClient(connection=connection, token=resolved_token)
-        event = client.update_event(request=request.to_dict())
+        event = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.update_event(request=request.to_dict()),
+        )
         _emit(success_envelope(event, operation=operation, connection=connection), pretty=pretty)
     except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
@@ -569,10 +632,12 @@ def events_delete(
     operation = "events.delete"
     try:
         require_delete_confirmation(event_id, confirm_event_id)
-        resolved_token = _resolve_required_token(connection, token)
         request = build_delete_request(event_id=event_id, confirm_event_id=confirm_event_id)
-        client = OWAClient(connection=connection, token=resolved_token)
-        client.delete_event(request=request.to_dict())
+        _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.delete_event(request=request.to_dict()),
+        )
         _emit(
             success_envelope({"deleted": True, "id": event_id}, operation=operation, connection=connection),
             pretty=pretty,
