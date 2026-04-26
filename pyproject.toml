@@ -30,9 +30,34 @@ pretty = [
 [project.scripts]
 m365-owa-cli = "m365_owa_cli.cli:app"
 
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/m365_owa_cli/**",
+  "README.md",
+  "pyproject.toml",
+  "docs/schema.md",
+  "docs/release.md",
+]
+exclude = [
+  ".github/**",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "docs/research/**",
+  "specs/**",
+  "tests/**",
+  "uv.lock",
+  "dist/**",
+  "build/**",
+  "*.egg-info/**",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+  "live: opt-in tests that talk to a configured live OWA connection",
+  "mutating: opt-in live tests that create and clean up synthetic OWA data",
+]
 
 [tool.ruff]
 line-length = 100

@@ -52,6 +52,35 @@ Before committing, inspect the sanitized output for:
 - tenant IDs, user IDs, mailbox GUIDs, and event IDs
 - private body text that is not needed to preserve payload shape
 
+## Mail And People Captures
+
+Mail and People endpoint discovery should use synthetic or disposable content whenever possible.
+Raw HAR files stay under `tests/fixtures/owa/raw/` or outside the repository.
+
+Useful route filters:
+
+```bash
+python scripts/sanitize_owa_fixture.py \
+  tests/fixtures/owa/raw/mail.har \
+  tests/fixtures/owa/mail_find_item.json \
+  --har-action FindItem
+
+python scripts/sanitize_owa_fixture.py \
+  tests/fixtures/owa/raw/mail.har \
+  tests/fixtures/owa/mail_get_item.json \
+  --har-action GetItem
+
+python scripts/sanitize_owa_fixture.py \
+  tests/fixtures/owa/raw/people.har \
+  tests/fixtures/owa/people_contacts.json \
+  --url-contains PeopleGraphVx/v1.0/contacts
+```
+
+The sanitizer preserves action names, URLs, HTTP methods, statuses, object shape, and array
+cardinality. It replaces tokens, cookies, item/contact/persona ids, subjects, message bodies,
+notes, person names, SMTP addresses, phone numbers, postal addresses, attachment names, and
+photo URLs with deterministic placeholders.
+
 The first read-only fixtures needed are:
 
 - `get_calendar_view_day.json`
@@ -63,3 +92,5 @@ The first read-only fixtures needed are:
 - auth failure
 - not-found failure
 - search request/response
+- mail folder/list/get/search request/response
+- contacts folder/list/get/search request/response

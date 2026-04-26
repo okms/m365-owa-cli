@@ -19,7 +19,8 @@ Connection names may contain letters, digits, dot, underscore, and dash.
 
 Use DevTools browser capture first. It is the preferred auth workflow because it avoids manually copying bearer tokens through chats, shell history, notes, screenshots, and docs.
 
-Start Chrome with a local DevTools port and open Outlook on the web. On macOS, prefer this reusable debug profile:
+Start Chrome with a local DevTools port and open Outlook on the web. Calendar, Mail,
+and People tabs are valid capture contexts. On macOS, prefer this reusable debug profile:
 
 ```bash
 open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.config/m365-owa-cli/chrome-devtools-profile" --no-first-run --no-default-browser-check --disable-search-engine-choice-screen https://outlook.office.com/calendar/
@@ -91,7 +92,8 @@ Use the bookmarklet only when DevTools capture is unavailable:
 m365-owa-cli auth bookmarklet --connection tenant-a --raw
 ```
 
-Then open Outlook on the web, run the bookmarklet, trigger Calendar traffic, and store the copied value with:
+Then open Outlook on the web, run the bookmarklet, trigger Mail, Calendar, or People traffic,
+and store the copied value with:
 
 ```bash
 m365-owa-cli auth set-token --connection tenant-a
@@ -106,3 +108,15 @@ m365-owa-cli auth set-token --connection tenant-a
 - Prefer `auth extract-token` over `auth set-token --token ...`; direct token arguments can land in shell history.
 - Structured output may include connection names, token file paths, source names, hostnames, elapsed time, and success or failure state. It must not include bearer values.
 - If adding new diagnostics, run tests that assert captured or backend bearer strings are redacted from stdout and exceptions.
+
+## Recognized OWA Route Families
+
+`auth extract-token` and the bookmarklet recognize OWA-owned route families only:
+
+- `/owa/service.svc`
+- `/owa/service.svc/s/...`
+- `/PeopleGraphVx/v1.0/...`
+- OWA GraphQL/local resolver routes observed under Outlook-owned hosts
+
+These route families are Outlook on the web internals, not Microsoft Graph v1. External hosts
+and unrelated browser traffic are ignored for bearer-header capture.

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from typing import Any, Mapping
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 
 from m365_owa_cli.errors import (
     AUTH_EXPIRED,
     NORMALIZATION_ERROR,
+    NOT_FOUND,
     OWA_BACKEND_ERROR,
     OWA_ENDPOINT_NOT_IMPLEMENTED,
     M365OwaError,
@@ -16,15 +17,25 @@ from m365_owa_cli.errors import (
 )
 
 from .endpoints import get_endpoint
-from .normalize import normalize_category, normalize_event
+from .normalize import normalize_category, normalize_category_detail, normalize_event
 from .requests import (
     OwaRequest,
+    build_category_details_request,
+    build_category_delete_request,
     build_category_upsert_request,
     build_create_event_request,
     build_delete_event_request,
+    build_contact_folders_request,
+    build_contact_get_request,
+    build_contacts_list_request as build_contacts_list_owa_request,
+    build_contacts_search_request as build_contacts_search_owa_request,
     build_get_event_request,
     build_list_categories_request,
     build_list_events_request,
+    build_mail_folders_request,
+    build_mail_get_request,
+    build_mail_list_request,
+    build_mail_search_request,
     build_search_events_request,
     build_update_event_request,
 )
@@ -295,6 +306,53 @@ class OWAClient:
             )
         return dict(data)
 
+    def _delete_rest(self, path: str) -> None:
+        url = f"{self.rest_base_url}{path}"
+        try:
+            response = self.http_client.delete(url, headers=self._rest_headers())
+        except httpx.HTTPError as exc:
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST delete request failed.",
+                retryable=True,
+                details={
+                    "url": url,
+                    "error": str(exc),
+                    "exception_type": type(exc).__name__,
+                },
+            ) from exc
+
+        details: dict[str, Any] = {
+            "url": url,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type"),
+        }
+        if response.status_code in {401, 403}:
+            raise M365OwaError(
+                AUTH_EXPIRED,
+                "Outlook bearer token expired or was rejected.",
+                retryable=False,
+                details=details,
+            )
+        if response.status_code == 404:
+            raise M365OwaError(
+                NOT_FOUND,
+                "Outlook REST category delete target was not found.",
+                retryable=False,
+                details=details,
+            )
+        if response.status_code >= 400:
+            try:
+                details["outlook_response"] = response.json()
+            except ValueError:
+                details["response_preview"] = response.text[:500]
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST returned an error response.",
+                retryable=response.status_code >= 500,
+                details=details,
+            )
+
     def get_default_calendar_folder_id(self) -> dict[str, Any]:
         data = self._post_json("GetCalendarFolders", {})
         groups = data.get("CalendarGroups")
@@ -401,12 +459,93 @@ class OWAClient:
         return events
 
     def get_event(self, *_, **kwargs: Any) -> dict[str, Any]:
-        self._not_implemented("events.get", "GetEvent", request=kwargs.get("request"))
-        return {}
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "events.get requires a structured OWA request.",
+                details={"request": request},
+            )
+        include_raw = bool(kwargs.get("include_raw", False))
+        payload = request.get("payload", {})
+        event_id = payload.get("id") if isinstance(payload, Mapping) else None
+        if not event_id:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "events.get request did not include an event id.",
+                details={"request": request},
+            )
+        data = self._post_json("GetCalendarItem", self._get_item_payload(str(event_id)))
+        event = normalize_event(self._extract_get_item(data), include_raw=include_raw)
+        return event.to_dict(include_raw=include_raw)
 
     def search_events(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
         self._not_implemented("events.search", "SearchEvents", request=kwargs.get("request"))
         return []
+
+    def _get_item_payload(self, event_id: str) -> dict[str, Any]:
+        return {
+            "__type": "GetItemJsonRequest:#Exchange",
+            "Header": {
+                "__type": "JsonRequestHeaders:#Exchange",
+                "RequestServerVersion": "Exchange2013",
+            },
+            "Body": {
+                "__type": "GetItemRequest:#Exchange",
+                "ItemShape": {
+                    "__type": "ItemResponseShape:#Exchange",
+                    "BaseShape": "AllProperties",
+                },
+                "ItemIds": [
+                    {
+                        "__type": "ItemId:#Exchange",
+                        "Id": event_id,
+                    }
+                ],
+            },
+        }
+
+    def _extract_get_item(self, data: Mapping[str, Any]) -> Mapping[str, Any]:
+        body = data.get("Body")
+        messages = body.get("ResponseMessages") if isinstance(body, Mapping) else None
+        items = messages.get("Items") if isinstance(messages, Mapping) else None
+        if not isinstance(items, list) or not items:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA get response did not include response messages.",
+                details={"response_keys": sorted(data.keys())},
+            )
+        message = items[0]
+        if not isinstance(message, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA get response message had an unexpected shape.",
+                details={"message": message},
+            )
+        if str(message.get("ResponseClass", "")).lower() != "success" and str(
+            message.get("ResponseCode", "")
+        ).lower() != "noerror":
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "OWA returned an error while fetching an event.",
+                retryable=False,
+                details={"get_error": message},
+            )
+        found_items = message.get("Items")
+        if not isinstance(found_items, list) or not found_items:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA get response did not include an event item.",
+                details={"message_keys": sorted(str(key) for key in message.keys())},
+            )
+        item = found_items[0]
+        if not isinstance(item, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA get event item had an unexpected shape.",
+                details={"item": item},
+            )
+        return item
 
     def _create_item_payload(self, request: Mapping[str, Any]) -> dict[str, Any]:
         payload = request.get("payload", {})
@@ -589,9 +728,21 @@ class OWAClient:
         data = self._post_json("DeleteItem", self._delete_item_payload(str(event_id)))
         self._raise_delete_response_errors(data)
 
-    def _category_details_payload(self) -> dict[str, Any]:
+    def _list_categories_payload(self) -> dict[str, Any]:
         return {
             "request": {},
+        }
+
+    def _category_details_payload(self) -> dict[str, Any]:
+        return {
+            "__type": "FindCategoryDetailsJsonRequest:#Exchange",
+            "Header": {
+                "__type": "JsonRequestHeaders:#Exchange",
+                "RequestServerVersion": "Exchange2013",
+            },
+            "Body": {
+                "__type": "FindCategoryDetailsRequest:#Exchange",
+            },
         }
 
     def _extract_category_items(self, data: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -620,7 +771,7 @@ class OWAClient:
                 "categories.list requires a structured OWA request.",
                 details={"request": request},
             )
-        data = self._post_json("GetMasterCategoryList", self._category_details_payload())
+        data = self._post_json("GetMasterCategoryList", self._list_categories_payload())
         categories = []
         for item in self._extract_category_items(data):
             category = normalize_category(item).to_dict()
@@ -632,6 +783,49 @@ class OWAClient:
                 )
             categories.append(category)
         return categories
+
+    def category_details(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.details requires a structured OWA request.",
+                details={"request": request},
+            )
+        categories = self.list_categories(request=build_list_categories_request().to_dict())
+        data = self._post_json("FindCategoryDetails", self._category_details_payload())
+        detail_by_name = {
+            detail.name: detail
+            for detail in (
+                normalize_category_detail(item)
+                for item in self._extract_category_items(data)
+            )
+            if detail.name
+        }
+        merged = []
+        seen_names: set[str] = set()
+        for category in categories:
+            name = str(category.get("name") or "")
+            if not name:
+                continue
+            seen_names.add(name)
+            detail = detail_by_name.get(name)
+            merged.append(
+                {
+                    "name": name,
+                    "color": category.get("color"),
+                    "item_count": 0 if detail is None else detail.item_count,
+                    "unread_count": 0 if detail is None else detail.unread_count,
+                    "is_search_folder_ready": False
+                    if detail is None
+                    else detail.is_search_folder_ready,
+                }
+            )
+        for name, detail in detail_by_name.items():
+            if name in seen_names:
+                continue
+            merged.append(detail.to_dict())
+        return merged
 
     def upsert_category(self, *_, **kwargs: Any) -> dict[str, Any]:
         request = kwargs.get("request")
@@ -683,6 +877,103 @@ class OWAClient:
             "write_endpoint": "Outlook REST /api/v2.0/me/MasterCategories",
         }
 
+    def _master_category_items(self) -> list[Mapping[str, Any]]:
+        data = self._post_json("GetMasterCategoryList", self._list_categories_payload())
+        return self._extract_category_items(data)
+
+    def delete_category(self, *_, **kwargs: Any) -> dict[str, Any]:
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.delete requires a structured OWA request.",
+                details={"request": request},
+            )
+        payload = request.get("payload", {})
+        name = payload.get("name") if isinstance(payload, Mapping) else None
+        if not name:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.delete request requires name.",
+                details={"payload": payload},
+            )
+        category_name = str(name)
+
+        matching = [
+            item
+            for item in self._master_category_items()
+            if str(item.get("Name") or item.get("DisplayName") or item.get("name") or "") == category_name
+        ]
+        if not matching:
+            raise M365OwaError(
+                NOT_FOUND,
+                f"Category {category_name!r} was not found.",
+                retryable=False,
+                details={"name": category_name},
+            )
+        category = matching[0]
+        category_id = category.get("Id") or category.get("id")
+        if not category_id:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA category response did not include an id for deletion.",
+                details={"name": category_name, "category_keys": sorted(str(key) for key in category.keys())},
+            )
+
+        quoted_id = quote(str(category_id).replace("'", "''"), safe="")
+        self._delete_rest(f"/api/v2.0/me/MasterCategories('{quoted_id}')")
+        remaining = [
+            item
+            for item in self._master_category_items()
+            if str(item.get("Name") or item.get("DisplayName") or item.get("name") or "") == category_name
+        ]
+        if remaining:
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST reported category deletion, but OWA still returns the category.",
+                retryable=True,
+                details={"name": category_name, "id": str(category_id)},
+            )
+        return {
+            "name": category_name,
+            "id": str(category_id),
+            "deleted": True,
+            "changed": True,
+            "write_endpoint": "Outlook REST /api/v2.0/me/MasterCategories",
+        }
+
+    def list_mail_folders(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("mail.folders.list", "FindFolder", request=kwargs.get("request"))
+        return []
+
+    def list_mail_messages(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("mail.list", "FindItem", request=kwargs.get("request"))
+        return []
+
+    def get_mail_message(self, *_, **kwargs: Any) -> dict[str, Any]:
+        self._not_implemented("mail.get", "GetItem", request=kwargs.get("request"))
+        return {}
+
+    def search_mail_messages(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("mail.search", "FindItem", request=kwargs.get("request"))
+        return []
+
+    def list_contact_folders(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("contacts.folders.list", "GetPeopleFilters", request=kwargs.get("request"))
+        return []
+
+    def list_contacts(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("contacts.list", "FindPeople", request=kwargs.get("request"))
+        return []
+
+    def get_contact(self, *_, **kwargs: Any) -> dict[str, Any]:
+        self._not_implemented("contacts.get", "GetPersona", request=kwargs.get("request"))
+        return {}
+
+    def search_contacts(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("contacts.search", "FindPeople", request=kwargs.get("request"))
+        return []
+
 
 def build_list_request(time_range, *, include_private: bool = False) -> OwaRequest:
     return build_list_events_request(time_range, include_private=include_private)
@@ -715,3 +1006,35 @@ def build_update_request(**kwargs: Any) -> OwaRequest:
 
 def build_delete_request(**kwargs: Any) -> OwaRequest:
     return build_delete_event_request(**kwargs)
+
+
+def build_mail_folders_list_request() -> OwaRequest:
+    return build_mail_folders_request()
+
+
+def build_mail_messages_list_request(**kwargs: Any) -> OwaRequest:
+    return build_mail_list_request(**kwargs)
+
+
+def build_mail_message_get_request(message_id: str) -> OwaRequest:
+    return build_mail_get_request(message_id)
+
+
+def build_mail_messages_search_request(**kwargs: Any) -> OwaRequest:
+    return build_mail_search_request(**kwargs)
+
+
+def build_contacts_folders_list_request() -> OwaRequest:
+    return build_contact_folders_request()
+
+
+def build_contacts_list_request(**kwargs: Any) -> OwaRequest:
+    return build_contacts_list_owa_request(**kwargs)
+
+
+def build_contact_request(contact_id: str) -> OwaRequest:
+    return build_contact_get_request(contact_id)
+
+
+def build_contacts_query_request(**kwargs: Any) -> OwaRequest:
+    return build_contacts_search_owa_request(**kwargs)

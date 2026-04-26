@@ -4,7 +4,7 @@
 
 ## Event Output
 
-`events list` and `events search` return `data` as an array of `Event` objects. `events get` returns a single `Event` object once the OWA adapter is implemented.
+`events list` returns `data` as an array of `Event` objects. `events get` returns a single `Event` object. `events search` remains a stable command contract but its OWA adapter is not implemented until the current tenant's search request shape is captured.
 
 ```json
 {
@@ -47,6 +47,35 @@ The canonical machine schema is `schema event`. The current stable event object 
 
 Recurring calendar reads are occurrence-oriented. Mutations of likely series masters remain refused by safety checks.
 
+## Mail And Contacts Contracts
+
+Mail and Contacts schemas are available before their OWA adapters are implemented:
+
+```bash
+m365-owa-cli schema mail-message
+m365-owa-cli schema mail-folder
+m365-owa-cli schema mail-attachment
+m365-owa-cli schema contact
+m365-owa-cli schema contact-folder
+```
+
+The placeholder commands are part of the stable command inventory:
+
+```bash
+m365-owa-cli mail folders list --connection work
+m365-owa-cli mail list --connection work
+m365-owa-cli mail get --connection work --id <message-id>
+m365-owa-cli mail search --connection work --query <text>
+m365-owa-cli contacts folders list --connection work
+m365-owa-cli contacts list --connection work
+m365-owa-cli contacts get --connection work --id <contact-id>
+m365-owa-cli contacts search --connection work --query <text>
+```
+
+Until endpoint adapters land, these commands return stable `OWA_ENDPOINT_NOT_IMPLEMENTED`
+JSON errors after resolving authentication. This keeps the machine contract visible while
+preserving the OWA-only boundary.
+
 ## Category Output
 
 `categories list` returns mailbox master categories. `color` is retained only when OWA provides it; many OWA responses expose names without colors.
@@ -58,6 +87,26 @@ Recurring calendar reads are occurrence-oriented. Mutations of likely series mas
   "operation": "categories.list",
   "data": [
     {"name": "Deep Work", "color": "Preset0"}
+  ]
+}
+```
+
+`categories details` returns the master category names merged with usage details from OWA
+`FindCategoryDetails`. Categories with no usage entry remain present with zero counts.
+
+```json
+{
+  "ok": true,
+  "connection": "work",
+  "operation": "categories.details",
+  "data": [
+    {
+      "name": "Deep Work",
+      "color": "Preset0",
+      "item_count": 3,
+      "unread_count": 1,
+      "is_search_folder_ready": true
+    }
   ]
 }
 ```
@@ -78,6 +127,24 @@ Category color is not user-configurable and defaults to Outlook's `Preset0`.
     "updated": false,
     "noop": true,
     "changed": false
+  }
+}
+```
+
+`categories delete` removes a mailbox master category after exact confirmation. The command
+resolves the category id from OWA `GetMasterCategoryList`, deletes through Outlook REST v2,
+then verifies the category is absent from a fresh OWA master-list read.
+
+```json
+{
+  "ok": true,
+  "connection": "work",
+  "operation": "categories.delete",
+  "data": {
+    "name": "Deep Work",
+    "id": "category-id",
+    "deleted": true,
+    "changed": true
   }
 }
 ```

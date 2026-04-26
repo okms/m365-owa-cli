@@ -12,7 +12,11 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from m365_owa_cli.owa.fixture_sanitize import extract_har_action_entries, sanitize_owa_fixture
+from m365_owa_cli.owa.fixture_sanitize import (
+    extract_har_action_entries,
+    extract_har_url_entries,
+    sanitize_owa_fixture,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,14 +29,23 @@ def parse_args() -> argparse.Namespace:
         "--har-action",
         help="When input is a HAR, keep only entries whose request URL contains this OWA action.",
     )
+    parser.add_argument(
+        "--url-contains",
+        help="When input is a HAR, keep only entries whose request URL contains this string.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     payload = json.loads(args.input.read_text(encoding="utf-8"))
+    if args.har_action and args.url_contains:
+        parser_error = "--har-action and --url-contains are mutually exclusive."
+        raise SystemExit(parser_error)
     if args.har_action:
         payload = extract_har_action_entries(payload, args.har_action)
+    if args.url_contains:
+        payload = extract_har_url_entries(payload, args.url_contains)
 
     sanitized = sanitize_owa_fixture(payload)
     args.output.parent.mkdir(parents=True, exist_ok=True)

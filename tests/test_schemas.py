@@ -7,13 +7,18 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from m365_owa_cli.capabilities import capabilities_payload
-from m365_owa_cli.models import Event
+from m365_owa_cli.models import Contact, ContactFolder, Event, MailAttachment, MailFolder, MailMessage
 from m365_owa_cli.owa.normalize import normalize_event
 from m365_owa_cli.schemas import (
+    contact_folder_schema_payload,
+    contact_schema_payload,
     commands_schema_payload,
     error_schema_payload,
     event_schema_payload,
     help_json_payload,
+    mail_attachment_schema_payload,
+    mail_folder_schema_payload,
+    mail_message_schema_payload,
 )
 
 
@@ -62,6 +67,14 @@ def test_event_schema_shape() -> None:
     assert "raw_owa" in properties
 
 
+def test_mail_and_contact_schema_shapes() -> None:
+    for model in (MailMessage, MailFolder, MailAttachment, Contact, ContactFolder):
+        schema = model.model_json_schema()
+        assert schema["type"] == "object"
+        assert schema["additionalProperties"] is False
+        assert "raw_owa" in schema["properties"]
+
+
 def test_capabilities_payload_shape() -> None:
     payload = capabilities_payload()
 
@@ -72,6 +85,11 @@ def test_capabilities_payload_shape() -> None:
     assert data["default_calendar_only"] is True
     assert data["private_events_default"] == "excluded"
     assert data["recurring_series_update"] is False
+    assert data["mail_read"] is False
+    assert data["mail_write"] is False
+    assert data["contacts_read"] is False
+    assert data["contacts_write"] is False
+    assert data["route_families"]["microsoft_graph"] is False
     assert data["auth_methods"] == [
         "env",
         "token_file",
@@ -96,7 +114,13 @@ def test_schema_payload_shapes() -> None:
     assert "auth extract-token" in command_names
     assert "events delete" in command_names
     assert "categories list" in command_names
+    assert "categories details" in command_names
+    assert "categories delete" in command_names
     assert "categories upsert" in command_names
+    assert "schema mail-message" in command_names
+    assert "schema contact" in command_names
+    assert "mail list" in command_names
+    assert "contacts list" in command_names
     upsert_command = next(
         item for item in commands_payload["data"]["commands"] if item["name"] == "categories upsert"
     )
@@ -109,6 +133,15 @@ def test_schema_payload_shapes() -> None:
         "text",
         "html",
     ]
+    for payload in (
+        mail_message_schema_payload(),
+        mail_folder_schema_payload(),
+        mail_attachment_schema_payload(),
+        contact_schema_payload(),
+        contact_folder_schema_payload(),
+    ):
+        assert payload["ok"] is True
+        assert payload["data"]["schema"]["additionalProperties"] is False
 
     assert error_payload["ok"] is True
     assert error_payload["data"]["count"] >= 10

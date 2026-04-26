@@ -37,6 +37,50 @@ _IDENTITY_KEY_NAMES = {
     "uid",
 }
 _IDENTITY_KEY_SUFFIXES = ("id", "key")
+_PERSON_KEY_NAMES = {
+    "displayname",
+    "firstname",
+    "givenname",
+    "lastname",
+    "middlename",
+    "name",
+    "nickname",
+    "surname",
+}
+_SUBJECT_KEY_NAMES = {
+    "normalizedsubject",
+    "subject",
+    "topic",
+}
+_BODY_KEY_NAMES = {
+    "body",
+    "bodypreview",
+    "content",
+    "notes",
+    "preview",
+    "textbody",
+    "value",
+}
+_ATTACHMENT_NAME_KEYS = {
+    "attachmentname",
+    "filename",
+    "name",
+}
+_PHONE_KEY_PARTS = ("phone", "mobile", "fax")
+_ADDRESS_KEY_NAMES = {
+    "address",
+    "businessaddress",
+    "city",
+    "country",
+    "homeaddress",
+    "office",
+    "officelocation",
+    "postaladdress",
+    "postalcode",
+    "state",
+    "street",
+}
+_PHOTO_KEY_PARTS = ("photo", "thumbnail", "avatar")
 
 
 def _key_text(key: Any) -> str:
@@ -53,8 +97,49 @@ def _is_identity_key(key: Any) -> bool:
     return text in _IDENTITY_KEY_NAMES or text.endswith(_IDENTITY_KEY_SUFFIXES)
 
 
+def _path_contains(path: tuple[str, ...], *needles: str) -> bool:
+    normalized = tuple(_key_text(item) for item in path)
+    return any(needle in item for item in normalized for needle in needles)
+
+
 def _is_identity_path(path: tuple[str, ...]) -> bool:
     return bool(path) and _is_identity_key(path[-1])
+
+
+def _semantic_placeholder_prefix(path: tuple[str, ...]) -> str | None:
+    if not path:
+        return None
+    key = _key_text(path[-1])
+    if any(part in key for part in _PHOTO_KEY_PARTS):
+        return "PHOTO"
+    if any(part in key for part in _PHONE_KEY_PARTS) or _path_contains(path, *_PHONE_KEY_PARTS):
+        return "PHONE"
+    if key in _ADDRESS_KEY_NAMES or _path_contains(path, "address"):
+        return "ADDRESS"
+    if key in _SUBJECT_KEY_NAMES:
+        return "SUBJECT"
+    if key in _BODY_KEY_NAMES and _path_contains(path, "body", "note"):
+        return "BODY"
+    if key == "notes":
+        return "BODY"
+    if key in _ATTACHMENT_NAME_KEYS and _path_contains(path, "attachment"):
+        return "ATTACHMENT"
+    if key == "displayname" and _path_contains(path, "location"):
+        return None
+    if key in {"displayname", "firstname", "givenname", "lastname", "middlename", "nickname", "surname"}:
+        return "PERSON"
+    if key in _PERSON_KEY_NAMES and _path_contains(
+        path,
+        "mailbox",
+        "recipient",
+        "sender",
+        "from",
+        "contact",
+        "persona",
+        "people",
+    ):
+        return "PERSON"
+    return None
 
 
 def _placeholder(mapping: dict[str, str], value: str, prefix: str) -> str:
@@ -70,6 +155,13 @@ class OwaFixtureSanitizer:
     emails: dict[str, str] = field(default_factory=dict)
     guids: dict[str, str] = field(default_factory=dict)
     owa_ids: dict[str, str] = field(default_factory=dict)
+    people: dict[str, str] = field(default_factory=dict)
+    phones: dict[str, str] = field(default_factory=dict)
+    addresses: dict[str, str] = field(default_factory=dict)
+    bodies: dict[str, str] = field(default_factory=dict)
+    subjects: dict[str, str] = field(default_factory=dict)
+    attachments: dict[str, str] = field(default_factory=dict)
+    photos: dict[str, str] = field(default_factory=dict)
 
     def sanitize(self, value: Any, *, path: tuple[str, ...] = ()) -> Any:
         if value is None or isinstance(value, (bool, int, float)):
@@ -102,6 +194,9 @@ class OwaFixtureSanitizer:
             return self._email_placeholder(value)
         if _is_identity_path(path) and value:
             return _placeholder(self.owa_ids, value, "OWA_ID")
+        semantic_prefix = _semantic_placeholder_prefix(path)
+        if semantic_prefix and value:
+            return self._semantic_placeholder(semantic_prefix, value)
 
         redacted = redact_tokens(value)
         redacted = self._redact_url_query_values(redacted)
@@ -126,13 +221,25 @@ class OwaFixtureSanitizer:
             self.emails[key] = f"user{len(self.emails) + 1:03d}@example.invalid"
         return self.emails[key]
 
+    def _semantic_placeholder(self, prefix: str, value: str) -> str:
+        maps = {
+            "ADDRESS": self.addresses,
+            "ATTACHMENT": self.attachments,
+            "BODY": self.bodies,
+            "PERSON": self.people,
+            "PHONE": self.phones,
+            "PHOTO": self.photos,
+            "SUBJECT": self.subjects,
+        }
+        return _placeholder(maps[prefix], value, prefix)
+
     def _redact_url_query_values(self, value: str) -> str:
         parts = urlsplit(value)
         if not parts.scheme or not parts.netloc or not parts.query:
             return value
         pairs = parse_qsl(parts.query, keep_blank_values=True)
         redacted_pairs = [
-            (key, "[REDACTED]" if _is_sensitive_key(key) else item)
+            (key, "[REDACTED]" if _is_sensitive_key(key) or _is_identity_key(key) else item)
             for key, item in pairs
         ]
         return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(redacted_pairs), parts.fragment))
@@ -143,11 +250,15 @@ def sanitize_owa_fixture(value: Any) -> Any:
 
 
 def extract_har_action_entries(har_payload: Mapping[str, Any], action: str) -> dict[str, Any]:
+    return extract_har_url_entries(har_payload, f"action={action}")
+
+
+def extract_har_url_entries(har_payload: Mapping[str, Any], url_contains: str) -> dict[str, Any]:
     entries = har_payload.get("log", {}).get("entries", [])
     if not isinstance(entries, list):
         return {"log": {"entries": []}}
 
-    marker = f"action={action}".lower()
+    marker = url_contains.lower()
     selected = []
     for entry in entries:
         request = entry.get("request", {}) if isinstance(entry, Mapping) else {}

@@ -139,6 +139,7 @@ def test_extract_token_stores_captured_browser_token_without_returning_it(monkey
 
     assert result["stored"] is True
     assert result["captured_host"] == "outlook.office.com"
+    assert result["captured_route_family"] == "owa_service_svc"
     assert read_token_file("work") == "Bearer captured-secret-token"
     assert "captured-secret-token" not in json.dumps(result)
 
@@ -152,9 +153,11 @@ def test_bookmarklet_payload_is_local_only_and_host_restricted():
     assert "outlook.cloud.microsoft" in bookmarklet
     assert "outlook.office.com" in bookmarklet
     assert "/owa/service.svc" in bookmarklet
+    assert "PeopleGraphVx" in bookmarklet
     assert "fetch(" not in bookmarklet
     assert "XMLHttpRequest" in bookmarklet
     assert "navigator.clipboard.writeText" in bookmarklet
+    assert "Outlook on the web" in payload["usage"][1]
     assert "secret-token-value" not in json.dumps(payload)
 
 
