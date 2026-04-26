@@ -71,13 +71,22 @@ def require_occurrence_id(event: Any, *, operation: str = "operation") -> str:
     return str(occurrence_id)
 
 
-def require_delete_confirmation(event_id: str, confirm_event_id: str) -> None:
-    if event_id != confirm_event_id:
+def require_exact_confirmation(
+    value: str,
+    confirmation: str,
+    *,
+    label: str,
+) -> None:
+    if value != confirmation:
         raise SafetyError(
             code=UNSAFE_OPERATION_REJECTED,
-            message="Delete confirmation must exactly match the event id.",
+            message=f"Confirmation must exactly match the {label}.",
             details={
-                "event_id": event_id,
-                "confirm_event_id": confirm_event_id,
+                label.replace(" ", "_"): value,
+                f"confirm_{label.replace(' ', '_')}": confirmation,
             },
         )
+
+
+def require_delete_confirmation(event_id: str, confirm_event_id: str) -> None:
+    require_exact_confirmation(event_id, confirm_event_id, label="event id")

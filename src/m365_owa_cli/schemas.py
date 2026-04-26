@@ -102,6 +102,12 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
         "optional_args": ["--token", "--dry-run"],
     },
     {
+        "name": "categories delete",
+        "summary": "Delete a mailbox master category with exact name confirmation.",
+        "required_args": ["--connection", "--name", "--confirm-category-name"],
+        "optional_args": ["--token"],
+    },
+    {
         "name": "events list",
         "summary": "List expanded events for a date range.",
         "required_args": ["--connection", "--day|--week"],

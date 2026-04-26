@@ -151,6 +151,30 @@ def test_delete_confirmation_failure_exits_before_auth(tmp_path, monkeypatch):
     assert payload["error"]["code"] == "UNSAFE_OPERATION_REJECTED"
 
 
+def test_category_delete_confirmation_failure_exits_before_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("M365_OWA_CONFIG_DIR", str(tmp_path))
+
+    result = runner.invoke(
+        app,
+        [
+            "categories",
+            "delete",
+            "--connection",
+            "work",
+            "--name",
+            "A",
+            "--confirm-category-name",
+            "B",
+        ],
+    )
+
+    assert result.exit_code == 6
+    payload = _json(result)
+    assert payload["ok"] is False
+    assert payload["operation"] == "categories.delete"
+    assert payload["error"]["code"] == "UNSAFE_OPERATION_REJECTED"
+
+
 def test_events_list_with_direct_token_reaches_owa_client_without_leaking_token(monkeypatch):
     class FakeOWAClient:
         def __init__(self, *, connection, token):
@@ -252,6 +276,43 @@ def test_categories_details_with_direct_token_reaches_owa_client(monkeypatch):
     assert payload["operation"] == "categories.details"
     assert payload["connection"] == "work"
     assert payload["data"] == [{"name": "Deep Work", "item_count": 3, "unread_count": 1}]
+
+
+def test_categories_delete_with_direct_token_reaches_owa_client(monkeypatch):
+    class FakeOWAClient:
+        def __init__(self, *, connection, token):
+            assert connection == "work"
+            assert token == "Bearer category-token"
+
+        def delete_category(self, *, request):
+            assert request["endpoint"] == "OutlookRestMasterCategories"
+            assert request["payload"] == {"name": "Deep Work", "confirm_category_name": "Deep Work"}
+            return {"name": "Deep Work", "id": "cat-1", "deleted": True, "changed": True}
+
+    monkeypatch.setattr("m365_owa_cli.cli.OWAClient", FakeOWAClient)
+
+    result = runner.invoke(
+        app,
+        [
+            "categories",
+            "delete",
+            "--connection",
+            "work",
+            "--name",
+            "Deep Work",
+            "--confirm-category-name",
+            "Deep Work",
+            "--token",
+            "Bearer category-token",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = _json(result)
+    assert payload["ok"] is True
+    assert payload["operation"] == "categories.delete"
+    assert payload["connection"] == "work"
+    assert payload["data"] == {"name": "Deep Work", "id": "cat-1", "deleted": True, "changed": True}
 
 
 def test_categories_upsert_dry_run_does_not_require_token():

@@ -39,6 +39,7 @@ from m365_owa_cli.output import error_envelope, success_envelope
 from m365_owa_cli.owa.client import (
     OWAClient,
     build_category_details_request,
+    build_category_delete_request,
     build_category_upsert_request,
     build_create_request,
     build_delete_request,
@@ -48,7 +49,7 @@ from m365_owa_cli.owa.client import (
     build_search_request,
     build_update_request,
 )
-from m365_owa_cli.owa.safety import require_delete_confirmation
+from m365_owa_cli.owa.safety import require_delete_confirmation, require_exact_confirmation
 from m365_owa_cli.schemas import (
     commands_schema_payload,
     error_schema_payload,
@@ -481,6 +482,36 @@ def categories_details(
             lambda client: client.category_details(request=request.to_dict()),
         )
         _emit(success_envelope(details, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@categories_app.command("delete")
+def categories_delete(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    name: str = typer.Option(..., "--name", help="Category name."),
+    confirm_category_name: str = typer.Option(
+        ...,
+        "--confirm-category-name",
+        help="Must exactly match --name.",
+    ),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "categories.delete"
+    try:
+        name_value = _non_empty_option(name, "--name")
+        require_exact_confirmation(name_value, confirm_category_name, label="category name")
+        request = build_category_delete_request(
+            name=name_value,
+            confirm_category_name=confirm_category_name,
+        )
+        result = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.delete_category(request=request.to_dict()),
+        )
+        _emit(success_envelope(result, operation=operation, connection=connection), pretty=pretty)
     except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 

@@ -101,3 +101,21 @@ Category color is not user-configurable and defaults to Outlook's `Preset0`.
   }
 }
 ```
+
+`categories delete` removes a mailbox master category after exact confirmation. The command
+resolves the category id from OWA `GetMasterCategoryList`, deletes through Outlook REST v2,
+then verifies the category is absent from a fresh OWA master-list read.
+
+```json
+{
+  "ok": true,
+  "connection": "work",
+  "operation": "categories.delete",
+  "data": {
+    "name": "Deep Work",
+    "id": "category-id",
+    "deleted": true,
+    "changed": true
+  }
+}
+```

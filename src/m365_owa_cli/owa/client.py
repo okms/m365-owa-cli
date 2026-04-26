@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from typing import Any, Mapping
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 
 from m365_owa_cli.errors import (
     AUTH_EXPIRED,
     NORMALIZATION_ERROR,
+    NOT_FOUND,
     OWA_BACKEND_ERROR,
     OWA_ENDPOINT_NOT_IMPLEMENTED,
     M365OwaError,
@@ -20,6 +21,7 @@ from .normalize import normalize_category, normalize_category_detail, normalize_
 from .requests import (
     OwaRequest,
     build_category_details_request,
+    build_category_delete_request,
     build_category_upsert_request,
     build_create_event_request,
     build_delete_event_request,
@@ -295,6 +297,53 @@ class OWAClient:
                 details=details,
             )
         return dict(data)
+
+    def _delete_rest(self, path: str) -> None:
+        url = f"{self.rest_base_url}{path}"
+        try:
+            response = self.http_client.delete(url, headers=self._rest_headers())
+        except httpx.HTTPError as exc:
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST delete request failed.",
+                retryable=True,
+                details={
+                    "url": url,
+                    "error": str(exc),
+                    "exception_type": type(exc).__name__,
+                },
+            ) from exc
+
+        details: dict[str, Any] = {
+            "url": url,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type"),
+        }
+        if response.status_code in {401, 403}:
+            raise M365OwaError(
+                AUTH_EXPIRED,
+                "Outlook bearer token expired or was rejected.",
+                retryable=False,
+                details=details,
+            )
+        if response.status_code == 404:
+            raise M365OwaError(
+                NOT_FOUND,
+                "Outlook REST category delete target was not found.",
+                retryable=False,
+                details=details,
+            )
+        if response.status_code >= 400:
+            try:
+                details["outlook_response"] = response.json()
+            except ValueError:
+                details["response_preview"] = response.text[:500]
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST returned an error response.",
+                retryable=response.status_code >= 500,
+                details=details,
+            )
 
     def get_default_calendar_folder_id(self) -> dict[str, Any]:
         data = self._post_json("GetCalendarFolders", {})
@@ -735,6 +784,71 @@ class OWAClient:
             "created": True,
             "updated": False,
             "noop": False,
+            "changed": True,
+            "write_endpoint": "Outlook REST /api/v2.0/me/MasterCategories",
+        }
+
+    def _master_category_items(self) -> list[Mapping[str, Any]]:
+        data = self._post_json("GetMasterCategoryList", self._list_categories_payload())
+        return self._extract_category_items(data)
+
+    def delete_category(self, *_, **kwargs: Any) -> dict[str, Any]:
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.delete requires a structured OWA request.",
+                details={"request": request},
+            )
+        payload = request.get("payload", {})
+        name = payload.get("name") if isinstance(payload, Mapping) else None
+        if not name:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.delete request requires name.",
+                details={"payload": payload},
+            )
+        category_name = str(name)
+
+        matching = [
+            item
+            for item in self._master_category_items()
+            if str(item.get("Name") or item.get("DisplayName") or item.get("name") or "") == category_name
+        ]
+        if not matching:
+            raise M365OwaError(
+                NOT_FOUND,
+                f"Category {category_name!r} was not found.",
+                retryable=False,
+                details={"name": category_name},
+            )
+        category = matching[0]
+        category_id = category.get("Id") or category.get("id")
+        if not category_id:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA category response did not include an id for deletion.",
+                details={"name": category_name, "category_keys": sorted(str(key) for key in category.keys())},
+            )
+
+        quoted_id = quote(str(category_id).replace("'", "''"), safe="")
+        self._delete_rest(f"/api/v2.0/me/MasterCategories('{quoted_id}')")
+        remaining = [
+            item
+            for item in self._master_category_items()
+            if str(item.get("Name") or item.get("DisplayName") or item.get("name") or "") == category_name
+        ]
+        if remaining:
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST reported category deletion, but OWA still returns the category.",
+                retryable=True,
+                details={"name": category_name, "id": str(category_id)},
+            )
+        return {
+            "name": category_name,
+            "id": str(category_id),
+            "deleted": True,
             "changed": True,
             "write_endpoint": "Outlook REST /api/v2.0/me/MasterCategories",
         }

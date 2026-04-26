@@ -149,3 +149,14 @@ def build_category_upsert_request(*, name: str) -> OwaRequest:
         endpoint="UpdateMasterCategoryList",
         payload={"name": name},
     )
+
+
+def build_category_delete_request(*, name: str, confirm_category_name: str) -> OwaRequest:
+    return OwaRequest(
+        operation="categories.delete",
+        endpoint="OutlookRestMasterCategories",
+        payload={
+            "name": name,
+            "confirm_category_name": confirm_category_name,
+        },
+    )

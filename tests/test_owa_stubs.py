@@ -9,6 +9,7 @@ from m365_owa_cli.owa.client import (
     OWAEndpointNotImplementedError,
     build_category_upsert_request,
     build_category_details_request,
+    build_category_delete_request,
     build_list_categories_request,
     build_create_request,
     build_delete_request,
@@ -497,6 +498,90 @@ def test_client_upserts_mailbox_category_noop_by_name_and_creates_missing_catego
         "OutlookRestMasterCategories",
     ]
     assert requests[-1][1] == {"DisplayName": "Planning", "Color": "Preset0"}
+
+
+def test_client_deletes_mailbox_category_with_read_after_delete():
+    requests = []
+    categories = [
+        {"Name": "Deep Work", "Color": "Preset0", "Id": "cat-1"},
+        {"Name": "Travel", "Color": "Preset1", "Id": "cat-2"},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        parsed_url = urlsplit(str(request.url))
+        if request.method == "DELETE":
+            requests.append(("DELETE", parsed_url.path))
+            assert parsed_url.path == "/api/v2.0/me/MasterCategories('cat-1')"
+            categories[:] = [category for category in categories if category["Id"] != "cat-1"]
+            return httpx.Response(204)
+
+        body = json.loads(request.content)
+        action = parse_qs(parsed_url.query)["action"][0]
+        requests.append((action, body))
+        if action == "GetMasterCategoryList":
+            return httpx.Response(
+                200,
+                json={
+                    "ResponseCode": "NoError",
+                    "ResponseClass": "Success",
+                    "WasSuccessful": True,
+                    "MasterList": list(categories),
+                },
+            )
+        raise AssertionError(f"Unexpected action {action}")
+
+    client = OWAClient(
+        token="Bearer test-token",
+        base_url="https://outlook.example.invalid",
+        rest_base_url="https://outlook.example.invalid",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    deleted = client.delete_category(
+        request=build_category_delete_request(
+            name="Deep Work",
+            confirm_category_name="Deep Work",
+        ).to_dict()
+    )
+
+    assert deleted == {
+        "name": "Deep Work",
+        "id": "cat-1",
+        "deleted": True,
+        "changed": True,
+        "write_endpoint": "Outlook REST /api/v2.0/me/MasterCategories",
+    }
+    assert [item[0] for item in requests] == ["GetMasterCategoryList", "DELETE", "GetMasterCategoryList"]
+
+
+def test_client_delete_category_missing_name_raises_not_found():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ResponseCode": "NoError",
+                "MasterList": [{"Name": "Travel", "Color": "Preset1", "Id": "cat-2"}],
+            },
+        )
+
+    client = OWAClient(
+        token="Bearer test-token",
+        base_url="https://outlook.example.invalid",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    try:
+        client.delete_category(
+            request=build_category_delete_request(
+                name="Deep Work",
+                confirm_category_name="Deep Work",
+            ).to_dict()
+        )
+    except M365OwaError as exc:
+        assert exc.code == "NOT_FOUND"
+        assert "Deep Work" in exc.message
+    else:
+        raise AssertionError("Expected missing category error")
 
 
 def test_client_creates_event_with_create_item_shape():
