@@ -2,7 +2,7 @@
 
 `m365-owa-cli` is a personal, agent-first Python CLI for Microsoft 365 Outlook workflows through Outlook on the web / OWA internal service endpoints.
 
-The current command surface is calendar-focused, but the package name leaves room for mail and tasks if the same OWA-authenticated endpoint strategy proves useful there. Microsoft Graph is intentionally out of scope.
+The implemented command surface is calendar/category-focused. Mail and Contacts currently have stable schema and placeholder command contracts so endpoint adapters can land behind a known machine interface. Microsoft Graph is intentionally out of scope.
 
 ## Examples
 
@@ -19,6 +19,9 @@ m365-owa-cli categories upsert --connection work --name "Deep Work"
 m365-owa-cli categories delete --connection work --name "Deep Work" --confirm-category-name "Deep Work"
 m365-owa-cli events list --connection work --day 2026-04-24
 m365-owa-cli events delete --connection work --id AAMk... --confirm-event-id AAMk...
+m365-owa-cli schema mail-message
+m365-owa-cli mail list --connection work
+m365-owa-cli contacts list --connection work
 ```
 
 Commands emit JSON by default. Use `--pretty` where supported for local human-readable output.
@@ -69,7 +72,7 @@ Each command stores separate local auth state:
 ~/.config/m365-owa-cli/connections/tenant-a.credential.json
 ```
 
-The command only accepts bearer headers from known Outlook hosts on `/owa/service.svc` and Microsoft identity token responses from `login.microsoftonline.com`; it stores secrets locally and emits metadata only. If the capture times out, interact with the open Calendar tab and retry without `--reload`.
+The command only accepts bearer headers from known Outlook hosts on recognized OWA route families and Microsoft identity token responses from `login.microsoftonline.com`; it stores secrets locally and emits metadata only. If the capture times out, interact with the open Outlook tab and retry without `--reload`.
 
 ## Manual Token Capture Fallback
 

@@ -34,7 +34,7 @@ from .config import (
     set_token,
     validate_connection_name,
 )
-from .browser import BrowserTokenCredential, capture_browser_bearer_token
+from .browser import BrowserTokenCredential, capture_browser_bearer_token, classify_owa_route_family
 from .owa.client import OWAClient
 
 __all__ = [
@@ -94,7 +94,7 @@ def bookmarklet_payload(connection: str) -> dict:
             return node;
           }}
           const title = makeText("div", "m365-owa-cli token helper", {{fontWeight:"700", marginBottom:"6px"}});
-          const status = makeText("div", "Watching future OWA calendar requests for connection " + connection + ". Refresh or open Calendar if nothing appears.");
+          const status = makeText("div", "Watching future Outlook on the web requests for connection " + connection + ". Refresh or open Mail, Calendar, or People if nothing appears.");
           status.id = "m365-owa-status";
           const textarea = document.createElement("textarea");
           textarea.id = "m365-owa-token";
@@ -140,7 +140,12 @@ def bookmarklet_payload(connection: str) -> dict:
           function isTarget(url) {{
             try {{
               const parsed = new URL(url, location.href);
-              return allowedHosts.includes(parsed.hostname) && parsed.pathname.includes("/owa/service.svc");
+              const path = parsed.pathname;
+              return allowedHosts.includes(parsed.hostname) && (
+                path.includes("/owa/service.svc") ||
+                path.includes("/PeopleGraphVx/") ||
+                path.toLowerCase().includes("graphql")
+              );
             }} catch (error) {{
               return false;
             }}
@@ -192,7 +197,7 @@ def bookmarklet_payload(connection: str) -> dict:
             try {{ capture(this.__m365OwaAuthorization, this.__m365OwaUrl || location.href); }} catch (error) {{}}
             return originalSend.apply(this, arguments);
           }};
-          window.__m365OwaTokenBookmarkletShow("Watching future OWA requests for connection " + connection + ". Refresh or open Calendar if nothing appears.");
+          window.__m365OwaTokenBookmarkletShow("Watching future Outlook on the web requests for connection " + connection + ". Refresh or open Mail, Calendar, or People if nothing appears.");
         }})();
         """
     )
@@ -201,7 +206,7 @@ def bookmarklet_payload(connection: str) -> dict:
         "bookmarklet": "javascript:" + script,
         "allowed_hosts": list(BOOKMARKLET_ALLOWED_HOSTS),
         "captures": [
-            "Authorization bearer headers from future fetch/XMLHttpRequest calls to /owa/service.svc",
+            "Authorization bearer headers from future fetch/XMLHttpRequest calls to recognized OWA route families",
         ],
         "does_not": [
             "read browser network history",
@@ -211,7 +216,7 @@ def bookmarklet_payload(connection: str) -> dict:
         "usage": [
             "Create a browser bookmark whose URL is the bookmarklet value.",
             "Open Outlook on the web on an allowed host.",
-            "Click the bookmarklet, then refresh or open Calendar to trigger OWA service requests.",
+            "Click the bookmarklet, then refresh or open Mail, Calendar, or People to trigger OWA requests.",
             "Copy the captured bearer value and run m365-owa-cli auth set-token --connection "
             + connection,
         ],
@@ -519,5 +524,6 @@ def extract_token(
         "devtools_url": captured.devtools_url,
         "page_url": captured.page_url,
         "captured_host": urlparse(captured.captured_url).hostname,
+        "captured_route_family": classify_owa_route_family(captured.captured_url)["route_family"],
         "elapsed_ms": round((time.monotonic() - started_at) * 1000),
     }

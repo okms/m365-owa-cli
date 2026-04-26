@@ -25,9 +25,17 @@ from .requests import (
     build_category_upsert_request,
     build_create_event_request,
     build_delete_event_request,
+    build_contact_folders_request,
+    build_contact_get_request,
+    build_contacts_list_request as build_contacts_list_owa_request,
+    build_contacts_search_request as build_contacts_search_owa_request,
     build_get_event_request,
     build_list_categories_request,
     build_list_events_request,
+    build_mail_folders_request,
+    build_mail_get_request,
+    build_mail_list_request,
+    build_mail_search_request,
     build_search_events_request,
     build_update_event_request,
 )
@@ -853,6 +861,38 @@ class OWAClient:
             "write_endpoint": "Outlook REST /api/v2.0/me/MasterCategories",
         }
 
+    def list_mail_folders(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("mail.folders.list", "FindFolder", request=kwargs.get("request"))
+        return []
+
+    def list_mail_messages(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("mail.list", "FindItem", request=kwargs.get("request"))
+        return []
+
+    def get_mail_message(self, *_, **kwargs: Any) -> dict[str, Any]:
+        self._not_implemented("mail.get", "GetItem", request=kwargs.get("request"))
+        return {}
+
+    def search_mail_messages(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("mail.search", "FindItem", request=kwargs.get("request"))
+        return []
+
+    def list_contact_folders(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("contacts.folders.list", "GetPeopleFilters", request=kwargs.get("request"))
+        return []
+
+    def list_contacts(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("contacts.list", "FindPeople", request=kwargs.get("request"))
+        return []
+
+    def get_contact(self, *_, **kwargs: Any) -> dict[str, Any]:
+        self._not_implemented("contacts.get", "GetPersona", request=kwargs.get("request"))
+        return {}
+
+    def search_contacts(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        self._not_implemented("contacts.search", "FindPeople", request=kwargs.get("request"))
+        return []
+
 
 def build_list_request(time_range, *, include_private: bool = False) -> OwaRequest:
     return build_list_events_request(time_range, include_private=include_private)
@@ -885,3 +925,35 @@ def build_update_request(**kwargs: Any) -> OwaRequest:
 
 def build_delete_request(**kwargs: Any) -> OwaRequest:
     return build_delete_event_request(**kwargs)
+
+
+def build_mail_folders_list_request() -> OwaRequest:
+    return build_mail_folders_request()
+
+
+def build_mail_messages_list_request(**kwargs: Any) -> OwaRequest:
+    return build_mail_list_request(**kwargs)
+
+
+def build_mail_message_get_request(message_id: str) -> OwaRequest:
+    return build_mail_get_request(message_id)
+
+
+def build_mail_messages_search_request(**kwargs: Any) -> OwaRequest:
+    return build_mail_search_request(**kwargs)
+
+
+def build_contacts_folders_list_request() -> OwaRequest:
+    return build_contact_folders_request()
+
+
+def build_contacts_list_request(**kwargs: Any) -> OwaRequest:
+    return build_contacts_list_owa_request(**kwargs)
+
+
+def build_contact_request(contact_id: str) -> OwaRequest:
+    return build_contact_get_request(contact_id)
+
+
+def build_contacts_query_request(**kwargs: Any) -> OwaRequest:
+    return build_contacts_search_owa_request(**kwargs)

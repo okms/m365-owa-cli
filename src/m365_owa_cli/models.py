@@ -205,6 +205,105 @@ class CategoryDetail(BaseModel):
         return self.model_dump(include_raw=include_raw)
 
 
+class _RawOptInModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    raw_owa: Any = None
+
+    def model_dump(  # type: ignore[override]
+        self,
+        *,
+        include_raw: bool = False,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        kwargs.setdefault("by_alias", True)
+        payload = super().model_dump(**kwargs)
+        if include_raw:
+            payload["raw_owa"] = _json_safe(self.raw_owa)
+        else:
+            payload.pop("raw_owa", None)
+        return payload
+
+    def to_dict(self, *, include_raw: bool = False) -> dict[str, Any]:
+        return self.model_dump(include_raw=include_raw)
+
+
+class MailAttachment(_RawOptInModel):
+    id: str | None = None
+    name: str | None = None
+    content_type: str | None = None
+    size: int | None = None
+    is_inline: bool = False
+    content_id: str | None = None
+    download_supported: bool = False
+
+
+class MailMessage(_RawOptInModel):
+    id: str | None = None
+    conversation_id: str | None = None
+    folder_id: str | None = None
+    subject: str | None = None
+    from_: str | None = Field(default=None, alias="from")
+    to: list[str] = Field(default_factory=list)
+    cc: list[str] = Field(default_factory=list)
+    received_at: str | None = None
+    sent_at: str | None = None
+    body_preview: str | None = None
+    body: str | None = None
+    body_content_type: str | None = None
+    categories: list[str] = Field(default_factory=list)
+    has_attachments: bool = False
+    attachments: list[MailAttachment] = Field(default_factory=list)
+    importance: str | None = None
+    is_read: bool | None = None
+    is_draft: bool = False
+    web_link: str | None = None
+
+
+class MailFolder(_RawOptInModel):
+    id: str | None = None
+    display_name: str | None = None
+    parent_id: str | None = None
+    child_folder_count: int | None = None
+    unread_count: int | None = None
+    total_count: int | None = None
+
+
+class ContactEmail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    address: str
+    label: str | None = None
+
+
+class ContactPhone(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    number: str
+    label: str | None = None
+
+
+class Contact(_RawOptInModel):
+    id: str | None = None
+    display_name: str | None = None
+    given_name: str | None = None
+    surname: str | None = None
+    email_addresses: list[ContactEmail] = Field(default_factory=list)
+    phone_numbers: list[ContactPhone] = Field(default_factory=list)
+    company_name: str | None = None
+    job_title: str | None = None
+    folder_id: str | None = None
+    is_favorite: bool = False
+
+
+class ContactFolder(_RawOptInModel):
+    id: str | None = None
+    display_name: str | None = None
+    parent_id: str | None = None
+    child_folder_count: int | None = None
+    total_count: int | None = None
+
+
 @dataclass(slots=True)
 class ResponseEnvelope:
     ok: bool = True

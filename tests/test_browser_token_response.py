@@ -36,6 +36,30 @@ def test_login_microsoftonline_v2_token_endpoint_is_recognized():
     )
 
 
+def test_owa_route_family_classifier_recognizes_mail_and_people_routes():
+    service = browser.classify_owa_route_family(
+        "https://outlook.office.com/owa/service.svc?action=FindItem&app=Mail"
+    )
+    subroute = browser.classify_owa_route_family(
+        "https://outlook.office.com/owa/service.svc/s/GetPersonaPhoto?id=abc"
+    )
+    people = browser.classify_owa_route_family(
+        "https://outlook.office.com/PeopleGraphVx/v1.0/contacts"
+    )
+    graphql = browser.classify_owa_route_family(
+        "https://outlook.office.com/ows/beta/graphql"
+    )
+    external = browser.classify_owa_route_family("https://example.com/owa/service.svc")
+
+    assert service["route_family"] == "owa_service_svc"
+    assert service["accepted_for_bearer_capture"] is True
+    assert subroute["route_family"] == "owa_service_svc_s"
+    assert people["route_family"] == "owa_people_routes"
+    assert graphql["route_family"] == "owa_graphql_gateway"
+    assert external["route_family"] == "external"
+    assert external["accepted_for_bearer_capture"] is False
+
+
 def test_token_request_metadata_parses_form_without_preserving_secrets():
     request = {
         "url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",

@@ -6,7 +6,7 @@ from typing import Any
 
 from m365_owa_cli.capabilities import capabilities_data
 from m365_owa_cli.errors import stable_error_specs
-from m365_owa_cli.models import Event
+from m365_owa_cli.models import Contact, ContactFolder, Event, MailAttachment, MailFolder, MailMessage
 from m365_owa_cli.output import success_envelope
 
 
@@ -26,6 +26,36 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
     {
         "name": "schema event",
         "summary": "Return the normalized event schema.",
+        "required_args": [],
+        "optional_args": [],
+    },
+    {
+        "name": "schema mail-message",
+        "summary": "Return the normalized mail message schema.",
+        "required_args": [],
+        "optional_args": [],
+    },
+    {
+        "name": "schema mail-folder",
+        "summary": "Return the normalized mail folder schema.",
+        "required_args": [],
+        "optional_args": [],
+    },
+    {
+        "name": "schema mail-attachment",
+        "summary": "Return the normalized mail attachment schema.",
+        "required_args": [],
+        "optional_args": [],
+    },
+    {
+        "name": "schema contact",
+        "summary": "Return the normalized contact schema.",
+        "required_args": [],
+        "optional_args": [],
+    },
+    {
+        "name": "schema contact-folder",
+        "summary": "Return the normalized contact folder schema.",
         "required_args": [],
         "optional_args": [],
     },
@@ -108,6 +138,54 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
         "optional_args": ["--token"],
     },
     {
+        "name": "mail folders list",
+        "summary": "List mail folders once the OWA adapter is implemented.",
+        "required_args": ["--connection"],
+        "optional_args": ["--token"],
+    },
+    {
+        "name": "mail list",
+        "summary": "List mail messages once the OWA adapter is implemented.",
+        "required_args": ["--connection"],
+        "optional_args": ["--folder-id", "--limit", "--include-raw", "--token"],
+    },
+    {
+        "name": "mail get",
+        "summary": "Fetch a mail message once the OWA adapter is implemented.",
+        "required_args": ["--connection", "--id"],
+        "optional_args": ["--include-raw", "--token"],
+    },
+    {
+        "name": "mail search",
+        "summary": "Search mail messages once the OWA adapter is implemented.",
+        "required_args": ["--connection", "--query"],
+        "optional_args": ["--limit", "--include-raw", "--token"],
+    },
+    {
+        "name": "contacts folders list",
+        "summary": "List contact folders once the OWA adapter is implemented.",
+        "required_args": ["--connection"],
+        "optional_args": ["--token"],
+    },
+    {
+        "name": "contacts list",
+        "summary": "List contacts once the OWA adapter is implemented.",
+        "required_args": ["--connection"],
+        "optional_args": ["--folder-id", "--limit", "--include-raw", "--token"],
+    },
+    {
+        "name": "contacts get",
+        "summary": "Fetch a contact once the OWA adapter is implemented.",
+        "required_args": ["--connection", "--id"],
+        "optional_args": ["--include-raw", "--token"],
+    },
+    {
+        "name": "contacts search",
+        "summary": "Search contacts once the OWA adapter is implemented.",
+        "required_args": ["--connection", "--query"],
+        "optional_args": ["--limit", "--include-raw", "--token"],
+    },
+    {
         "name": "events list",
         "summary": "List expanded events for a date range.",
         "required_args": ["--connection", "--day|--week"],
@@ -161,6 +239,34 @@ def event_schema_data() -> dict[str, Any]:
     }
 
 
+def _model_schema_data(name: str, model: Any) -> dict[str, Any]:
+    return {
+        "name": name,
+        "required_fields": list(model.model_json_schema().get("required", [])),
+        "schema": model.model_json_schema(),
+    }
+
+
+def mail_message_schema_data() -> dict[str, Any]:
+    return _model_schema_data("MailMessage", MailMessage)
+
+
+def mail_folder_schema_data() -> dict[str, Any]:
+    return _model_schema_data("MailFolder", MailFolder)
+
+
+def mail_attachment_schema_data() -> dict[str, Any]:
+    return _model_schema_data("MailAttachment", MailAttachment)
+
+
+def contact_schema_data() -> dict[str, Any]:
+    return _model_schema_data("Contact", Contact)
+
+
+def contact_folder_schema_data() -> dict[str, Any]:
+    return _model_schema_data("ContactFolder", ContactFolder)
+
+
 def error_schema_data() -> dict[str, Any]:
     return {
         "errors": stable_error_specs(),
@@ -176,6 +282,26 @@ def event_schema_payload() -> dict[str, Any]:
     return success_envelope(event_schema_data())
 
 
+def mail_message_schema_payload() -> dict[str, Any]:
+    return success_envelope(mail_message_schema_data())
+
+
+def mail_folder_schema_payload() -> dict[str, Any]:
+    return success_envelope(mail_folder_schema_data())
+
+
+def mail_attachment_schema_payload() -> dict[str, Any]:
+    return success_envelope(mail_attachment_schema_data())
+
+
+def contact_schema_payload() -> dict[str, Any]:
+    return success_envelope(contact_schema_data())
+
+
+def contact_folder_schema_payload() -> dict[str, Any]:
+    return success_envelope(contact_folder_schema_data())
+
+
 def error_schema_payload() -> dict[str, Any]:
     return success_envelope(error_schema_data())
 
@@ -188,6 +314,11 @@ def help_json_payload() -> dict[str, Any]:
             "schemas": {
                 "commands": commands_schema_data(),
                 "event": event_schema_data(),
+                "mail_message": mail_message_schema_data(),
+                "mail_folder": mail_folder_schema_data(),
+                "mail_attachment": mail_attachment_schema_data(),
+                "contact": contact_schema_data(),
+                "contact_folder": contact_folder_schema_data(),
                 "errors": error_schema_data(),
             },
         }

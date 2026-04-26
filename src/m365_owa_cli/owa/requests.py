@@ -160,3 +160,51 @@ def build_category_delete_request(*, name: str, confirm_category_name: str) -> O
             "confirm_category_name": confirm_category_name,
         },
     )
+
+
+def build_mail_folders_request() -> OwaRequest:
+    return OwaRequest(operation="mail.folders.list", endpoint="FindFolder")
+
+
+def build_mail_list_request(
+    *,
+    folder_id: str | None = None,
+    limit: int | None = None,
+) -> OwaRequest:
+    return OwaRequest(
+        operation="mail.list",
+        endpoint="FindItem",
+        payload={"folder_id": folder_id, "limit": limit},
+    )
+
+
+def build_mail_get_request(message_id: str) -> OwaRequest:
+    return OwaRequest(operation="mail.get", endpoint="GetItem", payload={"id": message_id})
+
+
+def build_mail_search_request(query: str, *, limit: int | None = None) -> OwaRequest:
+    return OwaRequest(operation="mail.search", endpoint="FindItem", payload={"query": query, "limit": limit})
+
+
+def build_contact_folders_request() -> OwaRequest:
+    return OwaRequest(operation="contacts.folders.list", endpoint="GetPeopleFilters")
+
+
+def build_contacts_list_request(
+    *,
+    folder_id: str | None = None,
+    limit: int | None = None,
+) -> OwaRequest:
+    return OwaRequest(
+        operation="contacts.list",
+        endpoint="FindPeople",
+        payload={"folder_id": folder_id, "limit": limit},
+    )
+
+
+def build_contact_get_request(contact_id: str) -> OwaRequest:
+    return OwaRequest(operation="contacts.get", endpoint="GetPersona", payload={"id": contact_id})
+
+
+def build_contacts_search_request(query: str, *, limit: int | None = None) -> OwaRequest:
+    return OwaRequest(operation="contacts.search", endpoint="FindPeople", payload={"query": query, "limit": limit})

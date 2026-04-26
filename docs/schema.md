@@ -47,6 +47,35 @@ The canonical machine schema is `schema event`. The current stable event object 
 
 Recurring calendar reads are occurrence-oriented. Mutations of likely series masters remain refused by safety checks.
 
+## Mail And Contacts Contracts
+
+Mail and Contacts schemas are available before their OWA adapters are implemented:
+
+```bash
+m365-owa-cli schema mail-message
+m365-owa-cli schema mail-folder
+m365-owa-cli schema mail-attachment
+m365-owa-cli schema contact
+m365-owa-cli schema contact-folder
+```
+
+The placeholder commands are part of the stable command inventory:
+
+```bash
+m365-owa-cli mail folders list --connection work
+m365-owa-cli mail list --connection work
+m365-owa-cli mail get --connection work --id <message-id>
+m365-owa-cli mail search --connection work --query <text>
+m365-owa-cli contacts folders list --connection work
+m365-owa-cli contacts list --connection work
+m365-owa-cli contacts get --connection work --id <contact-id>
+m365-owa-cli contacts search --connection work --query <text>
+```
+
+Until endpoint adapters land, these commands return stable `OWA_ENDPOINT_NOT_IMPLEMENTED`
+JSON errors after resolving authentication. This keeps the machine contract visible while
+preserving the OWA-only boundary.
+
 ## Category Output
 
 `categories list` returns mailbox master categories. `color` is retained only when OWA provides it; many OWA responses expose names without colors.

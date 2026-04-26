@@ -46,20 +46,33 @@ from m365_owa_cli.owa.client import (
     build_get_request,
     build_list_categories_request,
     build_list_request,
+    build_contact_request,
+    build_contacts_folders_list_request,
+    build_contacts_list_request,
+    build_contacts_query_request,
+    build_mail_folders_list_request,
+    build_mail_message_get_request,
+    build_mail_messages_list_request,
+    build_mail_messages_search_request,
     build_search_request,
     build_update_request,
 )
 from m365_owa_cli.owa.safety import require_delete_confirmation, require_exact_confirmation
 from m365_owa_cli.schemas import (
+    contact_folder_schema_payload,
+    contact_schema_payload,
     commands_schema_payload,
     error_schema_payload,
     event_schema_payload,
     help_json_payload,
+    mail_attachment_schema_payload,
+    mail_folder_schema_payload,
+    mail_message_schema_payload,
 )
 from m365_owa_cli.time_ranges import TimeRange, parse_day_range, parse_time_range, parse_week_range
 
 
-_GROUP_COMMANDS = {"auth", "categories", "events", "schema"}
+_GROUP_COMMANDS = {"auth", "categories", "contacts", "events", "mail", "schema"}
 _TOP_LEVEL_COMMANDS = {"capabilities", "help"}
 
 
@@ -150,11 +163,19 @@ schema_app = typer.Typer(cls=JsonErrorTyperGroup, help="Emit machine-readable sc
 auth_app = typer.Typer(cls=JsonErrorTyperGroup, help="Manage named OWA bearer-token connections.")
 events_app = typer.Typer(cls=JsonErrorTyperGroup, help="Operate on default-calendar events.")
 categories_app = typer.Typer(cls=JsonErrorTyperGroup, help="Operate on mailbox categories.")
+mail_app = typer.Typer(cls=JsonErrorTyperGroup, help="Operate on mail messages.")
+mail_folders_app = typer.Typer(cls=JsonErrorTyperGroup, help="Operate on mail folders.")
+contacts_app = typer.Typer(cls=JsonErrorTyperGroup, help="Operate on contacts.")
+contacts_folders_app = typer.Typer(cls=JsonErrorTyperGroup, help="Operate on contact folders.")
 
 app.add_typer(schema_app, name="schema")
 app.add_typer(auth_app, name="auth")
 app.add_typer(events_app, name="events")
 app.add_typer(categories_app, name="categories")
+app.add_typer(mail_app, name="mail")
+app.add_typer(contacts_app, name="contacts")
+mail_app.add_typer(mail_folders_app, name="folders")
+contacts_app.add_typer(contacts_folders_app, name="folders")
 
 
 def _exit_with_error(
@@ -314,6 +335,31 @@ def schema_event(pretty: bool = typer.Option(False, "--pretty", help="Pretty-pri
     _emit(event_schema_payload(), pretty=pretty)
 
 
+@schema_app.command("mail-message")
+def schema_mail_message(pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON.")) -> None:
+    _emit(mail_message_schema_payload(), pretty=pretty)
+
+
+@schema_app.command("mail-folder")
+def schema_mail_folder(pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON.")) -> None:
+    _emit(mail_folder_schema_payload(), pretty=pretty)
+
+
+@schema_app.command("mail-attachment")
+def schema_mail_attachment(pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON.")) -> None:
+    _emit(mail_attachment_schema_payload(), pretty=pretty)
+
+
+@schema_app.command("contact")
+def schema_contact(pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON.")) -> None:
+    _emit(contact_schema_payload(), pretty=pretty)
+
+
+@schema_app.command("contact-folder")
+def schema_contact_folder(pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON.")) -> None:
+    _emit(contact_folder_schema_payload(), pretty=pretty)
+
+
 @schema_app.command("errors")
 def schema_errors(pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON.")) -> None:
     _emit(error_schema_payload(), pretty=pretty)
@@ -446,6 +492,170 @@ def auth_extract_token(
         _emit(success_envelope(data, operation="auth.extract-token", connection=connection), pretty=pretty)
     except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.extract-token", connection=connection, pretty=pretty)
+
+
+@mail_folders_app.command("list")
+def mail_folders_list(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "mail.folders.list"
+    try:
+        request = build_mail_folders_list_request()
+        data = _run_with_owa_client(connection, token, lambda client: client.list_mail_folders(request=request.to_dict()))
+        _emit(success_envelope(data, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@mail_app.command("list")
+def mail_list(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    folder_id: str | None = typer.Option(None, "--folder-id", help="Mail folder id."),
+    limit: int | None = typer.Option(None, "--limit", min=1, help="Maximum messages."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    include_raw: bool = typer.Option(False, "--include-raw", help="Include raw OWA payloads."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "mail.list"
+    try:
+        request = build_mail_messages_list_request(folder_id=folder_id, limit=limit)
+        data = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.list_mail_messages(request=request.to_dict(), include_raw=include_raw),
+        )
+        _emit(success_envelope(data, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@mail_app.command("get")
+def mail_get(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    message_id: str = typer.Option(..., "--id", help="Message id."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    include_raw: bool = typer.Option(False, "--include-raw", help="Include raw OWA payload."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "mail.get"
+    try:
+        request = build_mail_message_get_request(message_id)
+        data = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.get_mail_message(request=request.to_dict(), include_raw=include_raw),
+        )
+        _emit(success_envelope(data, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@mail_app.command("search")
+def mail_search(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    query: str = typer.Option(..., "--query", help="Search query."),
+    limit: int | None = typer.Option(None, "--limit", min=1, help="Maximum messages."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    include_raw: bool = typer.Option(False, "--include-raw", help="Include raw OWA payloads."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "mail.search"
+    try:
+        request = build_mail_messages_search_request(query=query, limit=limit)
+        data = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.search_mail_messages(request=request.to_dict(), include_raw=include_raw),
+        )
+        _emit(success_envelope(data, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@contacts_folders_app.command("list")
+def contacts_folders_list(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "contacts.folders.list"
+    try:
+        request = build_contacts_folders_list_request()
+        data = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.list_contact_folders(request=request.to_dict()),
+        )
+        _emit(success_envelope(data, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@contacts_app.command("list")
+def contacts_list(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    folder_id: str | None = typer.Option(None, "--folder-id", help="Contact folder id."),
+    limit: int | None = typer.Option(None, "--limit", min=1, help="Maximum contacts."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    include_raw: bool = typer.Option(False, "--include-raw", help="Include raw OWA payloads."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "contacts.list"
+    try:
+        request = build_contacts_list_request(folder_id=folder_id, limit=limit)
+        data = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.list_contacts(request=request.to_dict(), include_raw=include_raw),
+        )
+        _emit(success_envelope(data, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@contacts_app.command("get")
+def contacts_get(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    contact_id: str = typer.Option(..., "--id", help="Contact or persona id."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    include_raw: bool = typer.Option(False, "--include-raw", help="Include raw OWA payload."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "contacts.get"
+    try:
+        request = build_contact_request(contact_id)
+        data = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.get_contact(request=request.to_dict(), include_raw=include_raw),
+        )
+        _emit(success_envelope(data, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@contacts_app.command("search")
+def contacts_search(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    query: str = typer.Option(..., "--query", help="Search query."),
+    limit: int | None = typer.Option(None, "--limit", min=1, help="Maximum contacts."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    include_raw: bool = typer.Option(False, "--include-raw", help="Include raw OWA payloads."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "contacts.search"
+    try:
+        request = build_contacts_query_request(query=query, limit=limit)
+        data = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.search_contacts(request=request.to_dict(), include_raw=include_raw),
+        )
+        _emit(success_envelope(data, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 
 
 @categories_app.command("list")

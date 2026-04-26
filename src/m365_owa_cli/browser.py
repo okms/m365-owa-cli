@@ -24,6 +24,7 @@ OWA_ALLOWED_HOSTS = {
     "outlook.office.com",
     "outlook.office365.com",
 }
+OWA_GRAPHQL_PATH_MARKERS = ("/graphql", "/ows/beta/graphql", "/owa/graphql")
 
 
 @dataclass(frozen=True, slots=True)
@@ -693,12 +694,56 @@ def _is_allowed_owa_url(url: str) -> bool:
     return parsed.hostname in OWA_ALLOWED_HOSTS
 
 
-def _is_target_owa_service_url(url: str) -> bool:
+def classify_owa_route_family(url: str) -> dict[str, Any]:
     try:
         parsed = urlparse(url)
     except ValueError:
-        return False
-    return parsed.hostname in OWA_ALLOWED_HOSTS and "/owa/service.svc" in parsed.path
+        return {
+            "host": None,
+            "path_family": None,
+            "route_family": "invalid",
+            "accepted_for_bearer_capture": False,
+        }
+    host = parsed.hostname
+    path = parsed.path or ""
+    if host not in OWA_ALLOWED_HOSTS:
+        return {
+            "host": host,
+            "path_family": None,
+            "route_family": "external",
+            "accepted_for_bearer_capture": False,
+        }
+    if path.startswith("/owa/service.svc/s/"):
+        route_family = "owa_service_svc_s"
+        path_family = "/owa/service.svc/s"
+    elif path == "/owa/service.svc" or path.startswith("/owa/service.svc/"):
+        route_family = "owa_service_svc"
+        path_family = "/owa/service.svc"
+    elif path.startswith("/PeopleGraphVx/"):
+        route_family = "owa_people_routes"
+        path_family = "/PeopleGraphVx"
+    elif any(marker in path.lower() for marker in OWA_GRAPHQL_PATH_MARKERS):
+        route_family = "owa_graphql_gateway"
+        path_family = "graphql"
+    else:
+        route_family = "owa_other"
+        path_family = path.split("/", 2)[1] if path.startswith("/") and len(path.split("/", 2)) > 1 else path
+    return {
+        "host": host,
+        "path_family": path_family,
+        "route_family": route_family,
+        "accepted_for_bearer_capture": route_family
+        in {
+            "owa_service_svc",
+            "owa_service_svc_s",
+            "owa_people_routes",
+            "owa_graphql_gateway",
+        },
+    }
+
+
+def _is_target_owa_service_url(url: str) -> bool:
+    return bool(classify_owa_route_family(url)["accepted_for_bearer_capture"])
 
 
 def _normalize_devtools_url(value: str) -> str:

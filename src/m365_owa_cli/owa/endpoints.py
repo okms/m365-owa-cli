@@ -105,6 +105,48 @@ ENDPOINTS: dict[str, EndpointSpec] = {
         purpose="Create mailbox master categories through Outlook REST v2 when missing",
         query={},
     ),
+    "FindFolder": EndpointSpec(
+        action="FindFolder",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Candidate OWA action for mail folder discovery",
+        query={"action": "FindFolder", "app": "Mail"},
+    ),
+    "FindItem": EndpointSpec(
+        action="FindItem",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Candidate OWA action for mail list and search",
+        query={"action": "FindItem", "app": "Mail"},
+    ),
+    "GetItem": EndpointSpec(
+        action="GetItem",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Candidate OWA action for fetching a mail item",
+        query={"action": "GetItem", "app": "Mail"},
+    ),
+    "FindPeople": EndpointSpec(
+        action="FindPeople",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Candidate OWA action for People list and search",
+        query={"action": "FindPeople", "app": "People"},
+    ),
+    "GetPersona": EndpointSpec(
+        action="GetPersona",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Candidate OWA action for fetching a People persona/contact",
+        query={"action": "GetPersona", "app": "People"},
+    ),
+    "GetPeopleFilters": EndpointSpec(
+        action="GetPeopleFilters",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Candidate OWA action for People folder/filter discovery",
+        query={"action": "GetPeopleFilters", "app": "People"},
+    ),
 }
 
 
