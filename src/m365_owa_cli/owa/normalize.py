@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Any, Iterable, Mapping
 
 try:  # pragma: no cover - exercised when models.py exists
-    from ..models import Event  # type: ignore
+    from ..models import Category, Event  # type: ignore
 except Exception:  # pragma: no cover - fallback for this scaffold
 
     @dataclass(slots=True)
@@ -66,14 +66,29 @@ def _extract_datetime_field(value: Any) -> tuple[str | None, str | None]:
 
 def _extract_body(value: Any) -> tuple[str | None, str | None]:
     if isinstance(value, Mapping):
-        body_type = _first_present(value, ("contentType", "bodyType", "type"))
-        body = _first_present(value, ("content", "text", "body"))
+        body_type = _first_present(value, ("contentType", "bodyType", "BodyType", "type"))
+        body = _first_present(value, ("content", "text", "body", "Value"))
         return (None if body is None else str(body)), (
             None if body_type is None else str(body_type).lower()
         )
     if value is None:
         return None, None
     return str(value), None
+
+
+def _extract_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Mapping):
+        for key in ("DisplayName", "displayName", "Name", "name", "EmailAddress", "emailAddress"):
+            if value.get(key):
+                return str(value[key])
+        mailbox = value.get("Mailbox") or value.get("mailbox")
+        if isinstance(mailbox, Mapping):
+            return _extract_text(mailbox)
+    return str(value)
 
 
 def _extract_categories(value: Any) -> list[str] | None:
@@ -152,6 +167,26 @@ def _is_occurrence(data: Mapping[str, Any]) -> bool:
     return False
 
 
+def _is_series_master(data: Mapping[str, Any]) -> bool:
+    if data.get("is_series_master") is not None:
+        return bool(data["is_series_master"])
+    if data.get("isSeriesMaster") is not None:
+        return bool(data["isSeriesMaster"])
+    calendar_item_type = data.get("CalendarItemType")
+    return isinstance(calendar_item_type, str) and calendar_item_type.lower() == "recurringmaster"
+
+
+def _duration_minutes(start: str | None, end: str | None) -> int | None:
+    if start is None or end is None:
+        return None
+    try:
+        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return int((end_dt - start_dt).total_seconds() // 60)
+
+
 def _construct_event(payload: dict[str, Any]) -> Event:
     try:
         return Event(**payload)  # type: ignore[misc]
@@ -167,6 +202,7 @@ def normalize_event(event: Mapping[str, Any], *, include_raw: bool = False) -> E
     )
     end_value, end_timezone = _extract_datetime_field(_first_present(event, ("end", "End")))
     body_value, body_type = _extract_body(_first_present(event, ("body", "Body")))
+    body_preview = _first_present(event, ("body_preview", "bodyPreview", "BodyPreview", "Preview", "preview"))
     categories = _extract_categories(_first_present(event, ("categories", "Categories")))
     meeting_link = _extract_meeting_link(event)
     normalized_timezone = _first_present(
@@ -175,6 +211,8 @@ def normalize_event(event: Mapping[str, Any], *, include_raw: bool = False) -> E
     )
     if normalized_timezone is None:
         normalized_timezone = timezone or end_timezone
+    subject = _first_present(event, ("subject", "Subject", "title", "Title"))
+    sensitivity = _first_present(event, ("sensitivity", "Sensitivity"))
     payload: dict[str, Any] = {
         "id": _extract_id(_first_present(event, ("id", "Id", "itemId", "ItemId"))),
         "occurrence_id": _extract_id(
@@ -183,16 +221,34 @@ def normalize_event(event: Mapping[str, Any], *, include_raw: bool = False) -> E
                 ("occurrence_id", "occurrenceId", "OccurrenceId", "InstanceKey"),
             )
         ),
-        "subject": _first_present(event, ("subject", "Subject")),
+        "series_master_id": _extract_id(
+            _first_present(event, ("series_master_id", "seriesMasterId", "SeriesMasterItemId", "SeriesId"))
+        ),
+        "subject": subject,
+        "title": _first_present(event, ("title", "Title")) or subject,
         "start": start_value,
+        "start_iso_local": _first_present(event, ("start_iso_local", "startIsoLocal")) or start_value,
         "end": end_value,
-        "body": body_value or _first_present(event, ("Preview", "preview")),
+        "end_iso_local": _first_present(event, ("end_iso_local", "endIsoLocal")) or end_value,
+        "is_all_day": bool(_first_present(event, ("is_all_day", "isAllDay", "IsAllDayEvent")) or False),
+        "duration_minutes": _first_present(event, ("duration_minutes", "durationMinutes"))
+        or _duration_minutes(start_value, end_value),
+        "body": body_value or body_preview,
         "body_type": _first_present(event, ("body_type", "bodyType")) or body_type or "text",
+        "body_content_type": _first_present(event, ("body_content_type", "bodyContentType"))
+        or _first_present(event, ("body_type", "bodyType"))
+        or body_type
+        or "text",
+        "body_preview": None if body_preview is None else str(body_preview),
         "categories": categories or [],
+        "location": _extract_text(_first_present(event, ("location", "Location"))),
+        "organizer": _extract_text(_first_present(event, ("organizer", "Organizer"))),
+        "sensitivity": None if sensitivity is None else str(sensitivity),
         "meeting_link": meeting_link,
         "timezone": normalized_timezone,
         "is_recurring": _is_recurring(event),
         "is_occurrence": _is_occurrence(event),
+        "is_series_master": _is_series_master(event),
         "is_private": _is_private(event),
     }
     if include_raw:
@@ -200,3 +256,14 @@ def normalize_event(event: Mapping[str, Any], *, include_raw: bool = False) -> E
     else:
         payload["raw_owa"] = None
     return _construct_event(payload)
+
+
+def normalize_category(category: Mapping[str, Any], *, include_raw: bool = False) -> Category:
+    name = _first_present(category, ("name", "Name", "Category", "displayName", "DisplayName"))
+    color = _first_present(category, ("color", "Color", "categoryColor", "CategoryColor"))
+    payload: dict[str, Any] = {
+        "name": "" if name is None else str(name),
+        "color": None if color is None else str(color),
+        "raw_owa": dict(category) if include_raw else None,
+    }
+    return Category(**payload)

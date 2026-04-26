@@ -13,11 +13,14 @@ m365-owa-cli auth set-token --connection work
 m365-owa-cli auth bookmarklet --connection work --raw
 m365-owa-cli auth extract-token --connection work --devtools-url http://127.0.0.1:9222 --reload
 m365-owa-cli auth list-connections
+m365-owa-cli categories list --connection work
+m365-owa-cli categories upsert --connection work --name "Deep Work"
 m365-owa-cli events list --connection work --day 2026-04-24
 m365-owa-cli events delete --connection work --id AAMk... --confirm-event-id AAMk...
 ```
 
 Commands emit JSON by default. Use `--pretty` where supported for local human-readable output.
+See [docs/schema.md](docs/schema.md) for the stable event and category JSON contracts.
 
 ## Configuration
 
@@ -29,13 +32,13 @@ Tokens are stored as plaintext files under:
 
 Tests and automation can override the config root with `M365_OWA_CONFIG_DIR`.
 
-Connection names are the explicit account, company, tenant, or environment selector. Examples:
+Connection names are the explicit account, tenant, or environment selector. Examples:
 
 ```bash
 m365-owa-cli auth list-connections
-m365-owa-cli events list --connection crayon --day 2026-04-24
-m365-owa-cli events list --connection softwareone --day 2026-04-24
-m365-owa-cli events list --connection swon --day 2026-04-24
+m365-owa-cli events list --connection tenant-a --day 2026-04-24
+m365-owa-cli events list --connection tenant-b --day 2026-04-24
+m365-owa-cli events list --connection tenant-c --day 2026-04-24
 m365-owa-cli events list --connection prod --day 2026-04-24
 ```
 
@@ -50,18 +53,18 @@ open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$H
 Capture per connection:
 
 ```bash
-m365-owa-cli auth extract-token --connection crayon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
-m365-owa-cli auth extract-token --connection softwareone --browser chrome --devtools-url http://127.0.0.1:9222 --reload
-m365-owa-cli auth extract-token --connection swon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-a --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-b --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-c --browser chrome --devtools-url http://127.0.0.1:9222 --reload
 ```
 
 Each command stores separate local auth state:
 
 ```text
-~/.config/m365-owa-cli/connections/crayon.token
-~/.config/m365-owa-cli/connections/softwareone.token
-~/.config/m365-owa-cli/connections/swon.token
-~/.config/m365-owa-cli/connections/crayon.credential.json
+~/.config/m365-owa-cli/connections/tenant-a.token
+~/.config/m365-owa-cli/connections/tenant-b.token
+~/.config/m365-owa-cli/connections/tenant-c.token
+~/.config/m365-owa-cli/connections/tenant-a.credential.json
 ```
 
 The command only accepts bearer headers from known Outlook hosts on `/owa/service.svc` and Microsoft identity token responses from `login.microsoftonline.com`; it stores secrets locally and emits metadata only. If the capture times out, interact with the open Calendar tab and retry without `--reload`.
@@ -71,7 +74,7 @@ The command only accepts bearer headers from known Outlook hosts on `/owa/servic
 Use the bookmarklet helper only when DevTools capture is unavailable:
 
 ```bash
-m365-owa-cli auth bookmarklet --connection crayon --raw
+m365-owa-cli auth bookmarklet --connection tenant-a --raw
 ```
 
 Create a browser bookmark with the generated value as the URL, open Outlook on the web, click the bookmarklet, then refresh or open Calendar. If OWA sends an `Authorization: Bearer ...` header to `/owa/service.svc`, the helper displays it for copying into `auth set-token`.
@@ -80,7 +83,7 @@ Create a browser bookmark with the generated value as the URL, open Outlook on t
 
 - Do not print, paste, commit, screenshot, or document bearer token values.
 - Do not copy `~/.config/m365-owa-cli/connections/*.token` or `*.credential.json` into this repository.
-- Use `--connection` names like `crayon`, `softwareone`, `swon`, `prod`, `dev`, or another explicit company/environment name so agents never depend on hidden account state.
+- Use `--connection` names like `tenant-a`, `tenant-b`, `prod`, `dev`, or another explicit tenant/environment name so agents never depend on hidden account state.
 - Keep remote debugging bound to the local machine, for example `http://127.0.0.1:9222`.
 - Prefer JSON command output and rely on built-in redaction for errors; do not add ad hoc debug logging around auth headers.
 

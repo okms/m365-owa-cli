@@ -7,6 +7,8 @@ from m365_owa_cli.errors import AUTH_EXPIRED, OWA_BACKEND_ERROR, M365OwaError
 from m365_owa_cli.owa.client import (
     OWAClient,
     OWAEndpointNotImplementedError,
+    build_category_upsert_request,
+    build_list_categories_request,
     build_create_request,
     build_delete_request,
     build_list_request,
@@ -316,6 +318,116 @@ def test_client_surfaces_delete_item_errors():
         assert "secret-token-value" not in repr(exc)
     else:
         raise AssertionError("Expected delete backend error")
+
+
+def test_client_lists_mailbox_categories_from_owa_shapes():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["headers"] = dict(request.headers)
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "ResponseClass": "Success",
+                "ResponseCode": "NoError",
+                "WasSuccessful": True,
+                "MasterList": [
+                    {"Name": "Deep Work", "Color": "Preset0", "Id": "cat-1"},
+                    {"Name": "Travel", "Color": 15, "Id": "cat-2"},
+                ],
+            },
+        )
+
+    client = OWAClient(
+        token="Bearer test-token",
+        base_url="https://outlook.example.invalid",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    categories = client.list_categories(request=build_list_categories_request().to_dict())
+
+    assert categories == [
+        {"name": "Deep Work", "color": "Preset0"},
+        {"name": "Travel", "color": "15"},
+    ]
+    assert parse_qs(urlsplit(captured["url"]).query)["action"] == ["GetMasterCategoryList"]
+    assert captured["headers"]["action"] == "GetMasterCategoryList"
+    assert captured["payload"] == {"request": {}}
+
+
+def test_client_upserts_mailbox_category_noop_by_name_and_creates_missing_category():
+    requests = []
+    categories = [{"Name": "Deep Work"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        parsed_url = urlsplit(str(request.url))
+        body = json.loads(request.content)
+        if parsed_url.path == "/api/v2.0/me/MasterCategories":
+            requests.append(("OutlookRestMasterCategories", body))
+            categories.append(
+                {
+                    "Name": body["DisplayName"],
+                    "DisplayName": body["DisplayName"],
+                    "Color": body["Color"],
+                    "Id": "rest-cat-1",
+                }
+            )
+            return httpx.Response(
+                201,
+                json={
+                    "DisplayName": body["DisplayName"],
+                    "Color": body["Color"],
+                    "Id": "rest-cat-1",
+                },
+            )
+
+        action = parse_qs(parsed_url.query)["action"][0]
+        requests.append((action, body))
+        if action == "GetMasterCategoryList":
+            return httpx.Response(
+                200,
+                json={
+                    "ResponseCode": "NoError",
+                    "ResponseClass": "Success",
+                    "WasSuccessful": True,
+                    "MasterList": list(categories),
+                },
+            )
+        raise AssertionError(f"Unexpected action {action}")
+
+    client = OWAClient(
+        token="Bearer test-token",
+        base_url="https://outlook.example.invalid",
+        rest_base_url="https://outlook.example.invalid",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    noop = client.upsert_category(
+        request=build_category_upsert_request(name="Deep Work").to_dict()
+    )
+
+    assert noop["changed"] is False
+    assert noop["created"] is False
+    assert noop["updated"] is False
+    created = client.upsert_category(request=build_category_upsert_request(name="Planning").to_dict())
+
+    assert created == {
+        "name": "Planning",
+        "id": "rest-cat-1",
+        "created": True,
+        "updated": False,
+        "noop": False,
+        "changed": True,
+        "write_endpoint": "Outlook REST /api/v2.0/me/MasterCategories",
+    }
+    assert [action for action, _payload in requests] == [
+        "GetMasterCategoryList",
+        "GetMasterCategoryList",
+        "OutlookRestMasterCategories",
+    ]
+    assert requests[-1][1] == {"DisplayName": "Planning", "Color": "Preset0"}
 
 
 def test_client_creates_event_with_create_item_shape():

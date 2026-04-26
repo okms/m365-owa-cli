@@ -18,6 +18,10 @@ def capabilities_data() -> dict[str, Any]:
         "recurring_occurrence_update": True,
         "recurring_series_update": False,
         "meeting_link_preserved": True,
+        "mailbox_categories_read": True,
+        "mailbox_categories_write": True,
+        "mailbox_categories_write_backend": "outlook-rest-v2",
+        "category_color_preservation": False,
         "auth_methods": [
             "env",
             "token_file",

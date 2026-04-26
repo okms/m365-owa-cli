@@ -127,3 +127,18 @@ def build_delete_event_request(
             "confirm_event_id": confirm_event_id,
         },
     )
+
+
+def build_list_categories_request() -> OwaRequest:
+    return OwaRequest(
+        operation="categories.list",
+        endpoint="GetMasterCategoryList",
+    )
+
+
+def build_category_upsert_request(*, name: str) -> OwaRequest:
+    return OwaRequest(
+        operation="categories.upsert",
+        endpoint="UpdateMasterCategoryList",
+        payload={"name": name},
+    )

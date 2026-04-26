@@ -38,9 +38,11 @@ from m365_owa_cli.errors import (
 from m365_owa_cli.output import error_envelope, success_envelope
 from m365_owa_cli.owa.client import (
     OWAClient,
+    build_category_upsert_request,
     build_create_request,
     build_delete_request,
     build_get_request,
+    build_list_categories_request,
     build_list_request,
     build_search_request,
     build_update_request,
@@ -55,7 +57,7 @@ from m365_owa_cli.schemas import (
 from m365_owa_cli.time_ranges import TimeRange, parse_day_range, parse_time_range, parse_week_range
 
 
-_GROUP_COMMANDS = {"auth", "events", "schema"}
+_GROUP_COMMANDS = {"auth", "categories", "events", "schema"}
 _TOP_LEVEL_COMMANDS = {"capabilities", "help"}
 
 
@@ -145,10 +147,12 @@ app = typer.Typer(
 schema_app = typer.Typer(cls=JsonErrorTyperGroup, help="Emit machine-readable schemas.")
 auth_app = typer.Typer(cls=JsonErrorTyperGroup, help="Manage named OWA bearer-token connections.")
 events_app = typer.Typer(cls=JsonErrorTyperGroup, help="Operate on default-calendar events.")
+categories_app = typer.Typer(cls=JsonErrorTyperGroup, help="Operate on mailbox categories.")
 
 app.add_typer(schema_app, name="schema")
 app.add_typer(auth_app, name="auth")
 app.add_typer(events_app, name="events")
+app.add_typer(categories_app, name="categories")
 
 
 def _exit_with_error(
@@ -263,6 +267,12 @@ def _range_for_search(from_date: str | None, to_date: str | None) -> dict[str, A
 
 def _as_request_range(value: TimeRange | dict[str, Any]) -> TimeRange | None:
     return value if isinstance(value, TimeRange) else None
+
+
+def _non_empty_option(value: str, option_name: str) -> str:
+    if not value.strip():
+        raise _invalid(f"{option_name} must not be empty.")
+    return value
 
 
 @app.callback(invoke_without_command=True)
@@ -434,6 +444,57 @@ def auth_extract_token(
         _emit(success_envelope(data, operation="auth.extract-token", connection=connection), pretty=pretty)
     except M365OwaError as exc:
         _exit_with_error(exc, operation="auth.extract-token", connection=connection, pretty=pretty)
+
+
+@categories_app.command("list")
+def categories_list(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "categories.list"
+    try:
+        request = build_list_categories_request()
+        categories = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.list_categories(request=request.to_dict()),
+        )
+        _emit(success_envelope(categories, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@categories_app.command("upsert")
+def categories_upsert(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    name: str = typer.Option(..., "--name", help="Category name."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show intended mutation without calling OWA."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "categories.upsert"
+    try:
+        name_value = _non_empty_option(name, "--name")
+        request = build_category_upsert_request(name=name_value)
+        if dry_run:
+            _emit(
+                success_envelope(
+                    {"dry_run": True, "request": request.to_dict()},
+                    operation=operation,
+                    connection=connection,
+                ),
+                pretty=pretty,
+            )
+            return
+        result = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.upsert_category(request=request.to_dict()),
+        )
+        _emit(success_envelope(result, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 
 
 @events_app.command("list")
