@@ -48,7 +48,7 @@ The first implementation is intentionally narrow and conservative:
 - `--reload` can reload the selected OWA tab after attaching to trigger fresh OWA requests.
 - Captured tokens are stored locally and never emitted.
 - DevTools capture is the preferred method for future agent use; bookmarklet/manual copy is the fallback.
-- Use explicit company, tenant, account, or environment connection names such as `crayon`, `softwareone`, `swon`, `prod`, or `dev`.
+- Use explicit tenant, account, or environment connection names such as `tenant-a`, `tenant-b`, `prod`, or `dev`.
 
 See `docs/auth-capture.md` for the operational runbook.
 
@@ -63,9 +63,9 @@ Start a browser with remote debugging, then open Outlook on the web:
 Then run:
 
 ```bash
-m365-owa-cli auth extract-token --connection crayon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
-m365-owa-cli auth extract-token --connection softwareone --browser chrome --devtools-url http://127.0.0.1:9222 --reload
-m365-owa-cli auth extract-token --connection swon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-a --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-b --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-c --browser chrome --devtools-url http://127.0.0.1:9222 --reload
 ```
 
 If capture times out, keep the command running without `--reload` and interact with Calendar, or use:

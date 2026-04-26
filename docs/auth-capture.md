@@ -1,17 +1,17 @@
 # Auth Capture For Agents
 
-This project supports multiple named Microsoft 365 / OWA connections. Treat the connection name as the explicit company, tenant, account, or environment selector.
+This project supports multiple named Microsoft 365 / OWA connections. Treat the connection name as the explicit tenant, account, or environment selector.
 
 Good connection names:
 
-- `crayon`
-- `softwareone`
-- `swon`
+- `tenant-a`
+- `tenant-b`
+- `tenant-c`
 - `work`
 - `personal`
 - `prod`
 - `dev`
-- any other company or environment specific text that matches the connection-name rules
+- any other tenant or environment specific text that matches the connection-name rules
 
 Connection names may contain letters, digits, dot, underscore, and dash.
 
@@ -30,21 +30,21 @@ The persistent `chrome-devtools-profile` keeps account selection and first-run s
 Then capture and store the token for the intended connection:
 
 ```bash
-m365-owa-cli auth extract-token --connection crayon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
-m365-owa-cli auth extract-token --connection softwareone --browser chrome --devtools-url http://127.0.0.1:9222 --reload
-m365-owa-cli auth extract-token --connection swon --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-a --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-b --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-c --browser chrome --devtools-url http://127.0.0.1:9222 --reload
 ```
 
-The same pattern works for any company or environment specific connection name:
+The same pattern works for any tenant or environment specific connection name:
 
 ```bash
-m365-owa-cli auth extract-token --connection <company-or-env> --browser chrome --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection <tenant-or-env> --browser chrome --devtools-url http://127.0.0.1:9222 --reload
 ```
 
 If the browser is Edge:
 
 ```bash
-m365-owa-cli auth extract-token --connection crayon --browser edge --devtools-url http://127.0.0.1:9222 --reload
+m365-owa-cli auth extract-token --connection tenant-a --browser edge --devtools-url http://127.0.0.1:9222 --reload
 ```
 
 ## Verify
@@ -52,9 +52,9 @@ m365-owa-cli auth extract-token --connection crayon --browser edge --devtools-ur
 After capture, test the connection:
 
 ```bash
-m365-owa-cli auth test --connection crayon
-m365-owa-cli auth test --connection softwareone
-m365-owa-cli auth test --connection swon
+m365-owa-cli auth test --connection tenant-a
+m365-owa-cli auth test --connection tenant-b
+m365-owa-cli auth test --connection tenant-c
 ```
 
 List configured connections without exposing token values:
@@ -75,10 +75,10 @@ Captured tokens and refresh credentials are stored outside the repository:
 Examples:
 
 ```text
-~/.config/m365-owa-cli/connections/crayon.token
-~/.config/m365-owa-cli/connections/softwareone.token
-~/.config/m365-owa-cli/connections/swon.token
-~/.config/m365-owa-cli/connections/crayon.credential.json
+~/.config/m365-owa-cli/connections/tenant-a.token
+~/.config/m365-owa-cli/connections/tenant-b.token
+~/.config/m365-owa-cli/connections/tenant-c.token
+~/.config/m365-owa-cli/connections/tenant-a.credential.json
 ```
 
 These files are local machine state, not project files.
@@ -88,13 +88,13 @@ These files are local machine state, not project files.
 Use the bookmarklet only when DevTools capture is unavailable:
 
 ```bash
-m365-owa-cli auth bookmarklet --connection crayon --raw
+m365-owa-cli auth bookmarklet --connection tenant-a --raw
 ```
 
 Then open Outlook on the web, run the bookmarklet, trigger Calendar traffic, and store the copied value with:
 
 ```bash
-m365-owa-cli auth set-token --connection crayon
+m365-owa-cli auth set-token --connection tenant-a
 ```
 
 ## Opsec Rules
