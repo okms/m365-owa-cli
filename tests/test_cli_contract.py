@@ -222,6 +222,38 @@ def test_categories_list_with_direct_token_reaches_owa_client(monkeypatch):
     assert payload["data"] == [{"name": "Deep Work", "color": "Preset0"}]
 
 
+def test_categories_details_with_direct_token_reaches_owa_client(monkeypatch):
+    class FakeOWAClient:
+        def __init__(self, *, connection, token):
+            assert connection == "work"
+            assert token == "Bearer category-token"
+
+        def category_details(self, *, request):
+            assert request["endpoint"] == "FindCategoryDetails"
+            return [{"name": "Deep Work", "item_count": 3, "unread_count": 1}]
+
+    monkeypatch.setattr("m365_owa_cli.cli.OWAClient", FakeOWAClient)
+
+    result = runner.invoke(
+        app,
+        [
+            "categories",
+            "details",
+            "--connection",
+            "work",
+            "--token",
+            "Bearer category-token",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = _json(result)
+    assert payload["ok"] is True
+    assert payload["operation"] == "categories.details"
+    assert payload["connection"] == "work"
+    assert payload["data"] == [{"name": "Deep Work", "item_count": 3, "unread_count": 1}]
+
+
 def test_categories_upsert_dry_run_does_not_require_token():
     result = runner.invoke(
         app,

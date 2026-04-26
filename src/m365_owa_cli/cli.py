@@ -38,6 +38,7 @@ from m365_owa_cli.errors import (
 from m365_owa_cli.output import error_envelope, success_envelope
 from m365_owa_cli.owa.client import (
     OWAClient,
+    build_category_details_request,
     build_category_upsert_request,
     build_create_request,
     build_delete_request,
@@ -461,6 +462,25 @@ def categories_list(
             lambda client: client.list_categories(request=request.to_dict()),
         )
         _emit(success_envelope(categories, operation=operation, connection=connection), pretty=pretty)
+    except M365OwaError as exc:
+        _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
+
+
+@categories_app.command("details")
+def categories_details(
+    connection: str = typer.Option(..., "--connection", help="Connection name."),
+    token: str | None = typer.Option(None, "--token", help="Direct bearer token."),
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON."),
+) -> None:
+    operation = "categories.details"
+    try:
+        request = build_category_details_request()
+        details = _run_with_owa_client(
+            connection,
+            token,
+            lambda client: client.category_details(request=request.to_dict()),
+        )
+        _emit(success_envelope(details, operation=operation, connection=connection), pretty=pretty)
     except M365OwaError as exc:
         _exit_with_error(exc, operation=operation, connection=connection, pretty=pretty)
 

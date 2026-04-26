@@ -8,6 +8,7 @@ from m365_owa_cli.owa.client import (
     OWAClient,
     OWAEndpointNotImplementedError,
     build_category_upsert_request,
+    build_category_details_request,
     build_list_categories_request,
     build_create_request,
     build_delete_request,
@@ -355,6 +356,74 @@ def test_client_lists_mailbox_categories_from_owa_shapes():
     assert parse_qs(urlsplit(captured["url"]).query)["action"] == ["GetMasterCategoryList"]
     assert captured["headers"]["action"] == "GetMasterCategoryList"
     assert captured["payload"] == {"request": {}}
+
+
+def test_client_lists_category_usage_details_from_owa_shapes():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["headers"] = dict(request.headers)
+        captured["payload"] = json.loads(request.content)
+        action = parse_qs(urlsplit(str(request.url)).query)["action"][0]
+        if action == "GetMasterCategoryList":
+            return httpx.Response(
+                200,
+                json={
+                    "ResponseCode": "NoError",
+                    "MasterList": [
+                        {"Name": "Deep Work", "Color": "Preset0"},
+                        {"Name": "Travel", "Color": "Preset1"},
+                    ],
+                },
+            )
+        if action == "FindCategoryDetails":
+            return httpx.Response(
+                200,
+                json={
+                    "Body": {
+                        "ResponseCode": "NoError",
+                        "CategoryDetails": [
+                            {
+                                "Name": "Deep Work",
+                                "ItemCount": 3,
+                                "UnreadCount": 1,
+                                "IsSearchFolderReady": True,
+                            }
+                        ],
+                    }
+                },
+            )
+        raise AssertionError(f"Unexpected action {action}")
+
+    client = OWAClient(
+        token="Bearer test-token",
+        base_url="https://outlook.example.invalid",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    details = client.category_details(request=build_category_details_request().to_dict())
+
+    assert details == [
+        {
+            "name": "Deep Work",
+            "color": "Preset0",
+            "item_count": 3,
+            "unread_count": 1,
+            "is_search_folder_ready": True,
+        },
+        {
+            "name": "Travel",
+            "color": "Preset1",
+            "item_count": 0,
+            "unread_count": 0,
+            "is_search_folder_ready": False,
+        },
+    ]
+    assert parse_qs(urlsplit(captured["url"]).query)["action"] == ["FindCategoryDetails"]
+    assert captured["headers"]["action"] == "FindCategoryDetails"
+    assert captured["payload"]["__type"] == "FindCategoryDetailsJsonRequest:#Exchange"
+    assert captured["payload"]["Body"]["__type"] == "FindCategoryDetailsRequest:#Exchange"
 
 
 def test_client_upserts_mailbox_category_noop_by_name_and_creates_missing_category():

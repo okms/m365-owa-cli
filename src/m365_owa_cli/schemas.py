@@ -90,6 +90,12 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
         "optional_args": ["--token"],
     },
     {
+        "name": "categories details",
+        "summary": "List mailbox category usage details.",
+        "required_args": ["--connection"],
+        "optional_args": ["--token"],
+    },
+    {
         "name": "categories upsert",
         "summary": "Create a mailbox master category when it does not already exist.",
         "required_args": ["--connection", "--name"],

@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Any, Iterable, Mapping
 
 try:  # pragma: no cover - exercised when models.py exists
-    from ..models import Category, Event  # type: ignore
+    from ..models import Category, CategoryDetail, Event  # type: ignore
 except Exception:  # pragma: no cover - fallback for this scaffold
 
     @dataclass(slots=True)
@@ -267,3 +267,44 @@ def normalize_category(category: Mapping[str, Any], *, include_raw: bool = False
         "raw_owa": dict(category) if include_raw else None,
     }
     return Category(**payload)
+
+
+def _coerce_int(value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def normalize_category_detail(category: Mapping[str, Any], *, include_raw: bool = False) -> CategoryDetail:
+    name = _first_present(category, ("name", "Name", "Category", "displayName", "DisplayName"))
+    color = _first_present(category, ("color", "Color", "categoryColor", "CategoryColor"))
+    item_count = _first_present(
+        category,
+        ("item_count", "itemCount", "ItemCount", "TotalCount", "Count"),
+    )
+    unread_count = _first_present(category, ("unread_count", "unreadCount", "UnreadCount"))
+    is_search_folder_ready = _first_present(
+        category,
+        (
+            "is_search_folder_ready",
+            "isSearchFolderReady",
+            "IsSearchFolderReady",
+            "SearchFolderReady",
+        ),
+    )
+    payload: dict[str, Any] = {
+        "name": "" if name is None else str(name),
+        "color": None if color is None else str(color),
+        "item_count": _coerce_int(item_count),
+        "unread_count": _coerce_int(unread_count),
+        "is_search_folder_ready": bool(is_search_folder_ready),
+        "raw_owa": dict(category) if include_raw else None,
+    }
+    return CategoryDetail(**payload)

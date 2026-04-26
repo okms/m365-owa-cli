@@ -136,6 +136,13 @@ def build_list_categories_request() -> OwaRequest:
     )
 
 
+def build_category_details_request() -> OwaRequest:
+    return OwaRequest(
+        operation="categories.details",
+        endpoint="FindCategoryDetails",
+    )
+
+
 def build_category_upsert_request(*, name: str) -> OwaRequest:
     return OwaRequest(
         operation="categories.upsert",

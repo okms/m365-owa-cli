@@ -96,6 +96,7 @@ def test_schema_payload_shapes() -> None:
     assert "auth extract-token" in command_names
     assert "events delete" in command_names
     assert "categories list" in command_names
+    assert "categories details" in command_names
     assert "categories upsert" in command_names
     upsert_command = next(
         item for item in commands_payload["data"]["commands"] if item["name"] == "categories upsert"

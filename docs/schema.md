@@ -62,6 +62,26 @@ Recurring calendar reads are occurrence-oriented. Mutations of likely series mas
 }
 ```
 
+`categories details` returns the master category names merged with usage details from OWA
+`FindCategoryDetails`. Categories with no usage entry remain present with zero counts.
+
+```json
+{
+  "ok": true,
+  "connection": "work",
+  "operation": "categories.details",
+  "data": [
+    {
+      "name": "Deep Work",
+      "color": "Preset0",
+      "item_count": 3,
+      "unread_count": 1,
+      "is_search_folder_ready": true
+    }
+  ]
+}
+```
+
 `categories upsert` is name-only. Existing names return a no-op result. Missing
 names are created through Outlook REST v2 `POST /api/v2.0/me/MasterCategories`;
 OWA `GetMasterCategoryList` remains the read-after-write verification source.

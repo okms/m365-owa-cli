@@ -178,6 +178,33 @@ class Category(BaseModel):
         return self.model_dump(include_raw=include_raw)
 
 
+class CategoryDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    color: str | None = None
+    item_count: int = 0
+    unread_count: int = 0
+    is_search_folder_ready: bool = False
+    raw_owa: Any = None
+
+    def model_dump(  # type: ignore[override]
+        self,
+        *,
+        include_raw: bool = False,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = super().model_dump(**kwargs)
+        if include_raw:
+            payload["raw_owa"] = _json_safe(self.raw_owa)
+        else:
+            payload.pop("raw_owa", None)
+        return payload
+
+    def to_dict(self, *, include_raw: bool = False) -> dict[str, Any]:
+        return self.model_dump(include_raw=include_raw)
+
+
 @dataclass(slots=True)
 class ResponseEnvelope:
     ok: bool = True

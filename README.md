@@ -14,6 +14,7 @@ m365-owa-cli auth bookmarklet --connection work --raw
 m365-owa-cli auth extract-token --connection work --devtools-url http://127.0.0.1:9222 --reload
 m365-owa-cli auth list-connections
 m365-owa-cli categories list --connection work
+m365-owa-cli categories details --connection work
 m365-owa-cli categories upsert --connection work --name "Deep Work"
 m365-owa-cli events list --connection work --day 2026-04-24
 m365-owa-cli events delete --connection work --id AAMk... --confirm-event-id AAMk...

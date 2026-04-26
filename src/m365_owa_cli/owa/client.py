@@ -16,9 +16,10 @@ from m365_owa_cli.errors import (
 )
 
 from .endpoints import get_endpoint
-from .normalize import normalize_category, normalize_event
+from .normalize import normalize_category, normalize_category_detail, normalize_event
 from .requests import (
     OwaRequest,
+    build_category_details_request,
     build_category_upsert_request,
     build_create_event_request,
     build_delete_event_request,
@@ -589,9 +590,21 @@ class OWAClient:
         data = self._post_json("DeleteItem", self._delete_item_payload(str(event_id)))
         self._raise_delete_response_errors(data)
 
-    def _category_details_payload(self) -> dict[str, Any]:
+    def _list_categories_payload(self) -> dict[str, Any]:
         return {
             "request": {},
+        }
+
+    def _category_details_payload(self) -> dict[str, Any]:
+        return {
+            "__type": "FindCategoryDetailsJsonRequest:#Exchange",
+            "Header": {
+                "__type": "JsonRequestHeaders:#Exchange",
+                "RequestServerVersion": "Exchange2013",
+            },
+            "Body": {
+                "__type": "FindCategoryDetailsRequest:#Exchange",
+            },
         }
 
     def _extract_category_items(self, data: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -620,7 +633,7 @@ class OWAClient:
                 "categories.list requires a structured OWA request.",
                 details={"request": request},
             )
-        data = self._post_json("GetMasterCategoryList", self._category_details_payload())
+        data = self._post_json("GetMasterCategoryList", self._list_categories_payload())
         categories = []
         for item in self._extract_category_items(data):
             category = normalize_category(item).to_dict()
@@ -632,6 +645,49 @@ class OWAClient:
                 )
             categories.append(category)
         return categories
+
+    def category_details(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.details requires a structured OWA request.",
+                details={"request": request},
+            )
+        categories = self.list_categories(request=build_list_categories_request().to_dict())
+        data = self._post_json("FindCategoryDetails", self._category_details_payload())
+        detail_by_name = {
+            detail.name: detail
+            for detail in (
+                normalize_category_detail(item)
+                for item in self._extract_category_items(data)
+            )
+            if detail.name
+        }
+        merged = []
+        seen_names: set[str] = set()
+        for category in categories:
+            name = str(category.get("name") or "")
+            if not name:
+                continue
+            seen_names.add(name)
+            detail = detail_by_name.get(name)
+            merged.append(
+                {
+                    "name": name,
+                    "color": category.get("color"),
+                    "item_count": 0 if detail is None else detail.item_count,
+                    "unread_count": 0 if detail is None else detail.unread_count,
+                    "is_search_folder_ready": False
+                    if detail is None
+                    else detail.is_search_folder_ready,
+                }
+            )
+        for name, detail in detail_by_name.items():
+            if name in seen_names:
+                continue
+            merged.append(detail.to_dict())
+        return merged
 
     def upsert_category(self, *_, **kwargs: Any) -> dict[str, Any]:
         request = kwargs.get("request")
