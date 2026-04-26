@@ -42,16 +42,28 @@ class Event(BaseModel):
 
     id: str | None = None
     occurrence_id: str | None = None
+    series_master_id: str | None = None
     subject: str | None = Field(default=...)
+    title: str | None = None
     start: str | None = Field(default=...)
+    start_iso_local: str | None = None
     end: str | None = Field(default=...)
+    end_iso_local: str | None = None
+    is_all_day: bool = False
+    duration_minutes: int | None = None
     body: str | None = None
     body_type: str | None = None
+    body_content_type: str | None = None
+    body_preview: str | None = None
     categories: list[str] = Field(default_factory=list)
+    location: str | None = None
+    organizer: str | None = None
+    sensitivity: str | None = None
     meeting_link: str | None = None
     timezone: str | None = None
     is_recurring: bool = False
     is_occurrence: bool = False
+    is_series_master: bool = False
     is_private: bool = False
     raw_owa: Any = None
 
@@ -71,6 +83,11 @@ class Event(BaseModel):
         if text not in cls.BODY_TYPES:
             raise ValueError("body_type must be text or html")
         return text
+
+    @field_validator("body_content_type", mode="before")
+    @classmethod
+    def _validate_body_content_type(cls, value: Any) -> str | None:
+        return cls._validate_body_type(value)
 
     def model_dump(  # type: ignore[override]
         self,
@@ -100,26 +117,65 @@ class Event(BaseModel):
             "properties": {
                 "id": {"type": ["string", "null"]},
                 "occurrence_id": {"type": ["string", "null"]},
+                "series_master_id": {"type": ["string", "null"]},
                 "subject": {"type": ["string", "null"]},
+                "title": {"type": ["string", "null"]},
                 "start": {"type": ["string", "null"], "format": "date-time"},
+                "start_iso_local": {"type": ["string", "null"], "format": "date-time"},
                 "end": {"type": ["string", "null"], "format": "date-time"},
+                "end_iso_local": {"type": ["string", "null"], "format": "date-time"},
+                "is_all_day": {"type": "boolean"},
+                "duration_minutes": {"type": ["integer", "null"]},
                 "body": {"type": ["string", "null"]},
                 "body_type": {
                     "type": ["string", "null"],
                     "enum": ["text", "html", None],
                 },
+                "body_content_type": {
+                    "type": ["string", "null"],
+                    "enum": ["text", "html", None],
+                },
+                "body_preview": {"type": ["string", "null"]},
                 "categories": {
                     "type": "array",
                     "items": {"type": "string"},
                 },
+                "location": {"type": ["string", "null"]},
+                "organizer": {"type": ["string", "null"]},
+                "sensitivity": {"type": ["string", "null"]},
                 "meeting_link": {"type": ["string", "null"]},
                 "timezone": {"type": ["string", "null"]},
                 "is_recurring": {"type": "boolean"},
                 "is_occurrence": {"type": "boolean"},
+                "is_series_master": {"type": "boolean"},
                 "is_private": {"type": "boolean"},
                 "raw_owa": {},
             },
         }
+
+
+class Category(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    color: str | None = None
+    raw_owa: Any = None
+
+    def model_dump(  # type: ignore[override]
+        self,
+        *,
+        include_raw: bool = False,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = super().model_dump(**kwargs)
+        if include_raw:
+            payload["raw_owa"] = _json_safe(self.raw_owa)
+        else:
+            payload.pop("raw_owa", None)
+        return payload
+
+    def to_dict(self, *, include_raw: bool = False) -> dict[str, Any]:
+        return self.model_dump(include_raw=include_raw)
 
 
 @dataclass(slots=True)

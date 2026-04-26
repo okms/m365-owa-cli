@@ -9,12 +9,14 @@ from .client import (
     build_update_request,
 )
 from .endpoints import ENDPOINTS, EndpointSpec, get_endpoint, known_action_names
-from .normalize import Event, normalize_event
+from .normalize import Category, Event, normalize_category, normalize_event
 from .requests import (
     OwaRequest,
+    build_category_upsert_request,
     build_create_event_request,
     build_delete_event_request,
     build_get_event_request,
+    build_list_categories_request,
     build_list_events_request,
     build_search_events_request,
     build_update_event_request,
@@ -30,17 +32,20 @@ from .safety import (
 __all__ = [
     "ENDPOINTS",
     "EndpointSpec",
+    "Category",
     "Event",
     "OWAClient",
     "OWAEndpointNotImplementedError",
     "OwaRequest",
     "SafetyError",
+    "build_category_upsert_request",
     "build_create_event_request",
     "build_create_request",
     "build_delete_event_request",
     "build_delete_request",
     "build_get_event_request",
     "build_get_request",
+    "build_list_categories_request",
     "build_list_events_request",
     "build_list_request",
     "build_search_events_request",
@@ -50,6 +55,7 @@ __all__ = [
     "get_endpoint",
     "known_action_names",
     "is_likely_series_or_master",
+    "normalize_category",
     "normalize_event",
     "refuse_likely_series_operation",
     "require_delete_confirmation",

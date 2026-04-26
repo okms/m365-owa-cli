@@ -77,6 +77,34 @@ ENDPOINTS: dict[str, EndpointSpec] = {
         purpose="Delete an item by id using OWA's generic item deletion action",
         query={"action": "DeleteItem", "app": "Calendar"},
     ),
+    "GetMasterCategoryList": EndpointSpec(
+        action="GetMasterCategoryList",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Fetch mailbox master category names, colors, ids, and keyboard shortcuts",
+        query={"action": "GetMasterCategoryList", "app": "Mail"},
+    ),
+    "FindCategoryDetails": EndpointSpec(
+        action="FindCategoryDetails",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Fetch category usage counts for mailbox items",
+        query={"action": "FindCategoryDetails", "app": "Mail"},
+    ),
+    "UpdateMasterCategoryList": EndpointSpec(
+        action="UpdateMasterCategoryList",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Investigated OWA service action; returns success for some shapes without mutating the master list",
+        query={"action": "UpdateMasterCategoryList", "app": "Mail"},
+    ),
+    "OutlookRestMasterCategories": EndpointSpec(
+        action="OutlookRestMasterCategories",
+        method="POST",
+        path="/api/v2.0/me/MasterCategories",
+        purpose="Create mailbox master categories through Outlook REST v2 when missing",
+        query={},
+    ),
 }
 
 

@@ -16,12 +16,14 @@ from m365_owa_cli.errors import (
 )
 
 from .endpoints import get_endpoint
-from .normalize import normalize_event
+from .normalize import normalize_category, normalize_event
 from .requests import (
     OwaRequest,
+    build_category_upsert_request,
     build_create_event_request,
     build_delete_event_request,
     build_get_event_request,
+    build_list_categories_request,
     build_list_events_request,
     build_search_events_request,
     build_update_event_request,
@@ -118,12 +120,14 @@ class OWAClient:
         connection: str | None = None,
         token: str | None = None,
         base_url: str = "https://outlook.cloud.microsoft",
+        rest_base_url: str = "https://outlook.office.com",
         http_client: httpx.Client | None = None,
         timeout: float = 30.0,
     ) -> None:
         self.connection = connection
         self.token = token
         self.base_url = base_url.rstrip("/")
+        self.rest_base_url = rest_base_url.rstrip("/")
         self.http_client = http_client or httpx.Client(timeout=timeout)
 
     def __repr__(self) -> str:
@@ -227,6 +231,66 @@ class OWAClient:
                 OWA_BACKEND_ERROR,
                 message,
                 retryable=response.status_code >= 500 or response_class == "Error",
+                details=details,
+            )
+        return dict(data)
+
+    def _rest_headers(self) -> dict[str, str]:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        authorization = _ensure_bearer(self.token)
+        if authorization:
+            headers["Authorization"] = authorization
+        return headers
+
+    def _post_rest_json(self, path: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        url = f"{self.rest_base_url}{path}"
+        try:
+            response = self.http_client.post(url, headers=self._rest_headers(), json=dict(payload))
+        except httpx.HTTPError as exc:
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST request failed.",
+                retryable=True,
+                details={
+                    "url": url,
+                    "error": str(exc),
+                    "exception_type": type(exc).__name__,
+                },
+            ) from exc
+
+        details: dict[str, Any] = {
+            "url": url,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type"),
+        }
+        if response.status_code in {401, 403}:
+            raise M365OwaError(
+                AUTH_EXPIRED,
+                "Outlook bearer token expired or was rejected.",
+                retryable=False,
+                details=details,
+            )
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            details["response_preview"] = response.text[:500]
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST returned a non-JSON response.",
+                retryable=response.status_code >= 500,
+                details=details,
+            ) from exc
+
+        if response.status_code >= 400:
+            details["outlook_response"] = data
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "Outlook REST returned an error response.",
+                retryable=response.status_code >= 500,
                 details=details,
             )
         return dict(data)
@@ -524,6 +588,100 @@ class OWAClient:
             )
         data = self._post_json("DeleteItem", self._delete_item_payload(str(event_id)))
         self._raise_delete_response_errors(data)
+
+    def _category_details_payload(self) -> dict[str, Any]:
+        return {
+            "request": {},
+        }
+
+    def _extract_category_items(self, data: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+        body = data.get("Body") if isinstance(data.get("Body"), Mapping) else data
+        if not isinstance(body, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA category response did not include a usable object.",
+                details={"response_type": type(data).__name__},
+            )
+        for key in ("CategoryDetails", "CategoryDetailsList", "MasterList", "Categories", "Items"):
+            items = body.get(key)
+            if isinstance(items, list):
+                return [item for item in items if isinstance(item, Mapping)]
+        raise M365OwaError(
+            NORMALIZATION_ERROR,
+            "OWA category response did not include a category list.",
+            details={"body_keys": sorted(str(key) for key in body.keys())},
+        )
+
+    def list_categories(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.list requires a structured OWA request.",
+                details={"request": request},
+            )
+        data = self._post_json("GetMasterCategoryList", self._category_details_payload())
+        categories = []
+        for item in self._extract_category_items(data):
+            category = normalize_category(item).to_dict()
+            if not category.get("name"):
+                raise M365OwaError(
+                    NORMALIZATION_ERROR,
+                    "OWA category response included a category without a usable name.",
+                    details={"category": item},
+                )
+            categories.append(category)
+        return categories
+
+    def upsert_category(self, *_, **kwargs: Any) -> dict[str, Any]:
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.upsert requires a structured OWA request.",
+                details={"request": request},
+            )
+        payload = request.get("payload", {})
+        name = payload.get("name") if isinstance(payload, Mapping) else None
+        if not name:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "categories.upsert request requires name.",
+                details={"payload": payload},
+            )
+
+        categories = self.list_categories(request=build_list_categories_request().to_dict())
+        category_name = str(name)
+        existing_index = next(
+            (index for index, category in enumerate(categories) if category.get("name") == category_name),
+            None,
+        )
+        if existing_index is not None:
+            return {
+                "name": category_name,
+                "created": False,
+                "updated": False,
+                "noop": True,
+                "changed": False,
+            }
+
+        created = self._post_rest_json(
+            "/api/v2.0/me/MasterCategories",
+            {
+                "DisplayName": category_name,
+                "Color": "Preset0",
+            },
+        )
+        category = normalize_category(created).to_dict()
+        return {
+            "name": category.get("name") or category_name,
+            "id": created.get("Id") or created.get("id"),
+            "created": True,
+            "updated": False,
+            "noop": False,
+            "changed": True,
+            "write_endpoint": "Outlook REST /api/v2.0/me/MasterCategories",
+        }
 
 
 def build_list_request(time_range, *, include_private: bool = False) -> OwaRequest:

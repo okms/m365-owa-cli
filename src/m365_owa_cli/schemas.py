@@ -84,6 +84,18 @@ COMMAND_SCHEMA: list[dict[str, Any]] = [
         "optional_args": ["--browser", "--devtools-url", "--timeout", "--reload"],
     },
     {
+        "name": "categories list",
+        "summary": "List mailbox master categories.",
+        "required_args": ["--connection"],
+        "optional_args": ["--token"],
+    },
+    {
+        "name": "categories upsert",
+        "summary": "Create a mailbox master category when it does not already exist.",
+        "required_args": ["--connection", "--name"],
+        "optional_args": ["--token", "--dry-run"],
+    },
+    {
         "name": "events list",
         "summary": "List expanded events for a date range.",
         "required_args": ["--connection", "--day|--week"],
