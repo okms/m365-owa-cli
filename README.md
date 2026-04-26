@@ -127,3 +127,4 @@ M365_OWA_LIVE_CONNECTION=work M365_OWA_LIVE_ALLOW_MUTATION=1 uv run pytest tests
 ```
 
 Mutating live tests create synthetic names with a `m365-owa-cli-live-test-` prefix and clean them up with exact confirmations.
+See [docs/live-verification.md](docs/live-verification.md) for the Mail and Contacts live verification matrix.
