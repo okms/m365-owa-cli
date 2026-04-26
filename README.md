@@ -112,3 +112,15 @@ git push origin main --tags
 The `.github/workflows/publish.yml` workflow runs tests, builds the source and wheel distributions, checks them with Twine, and publishes them to PyPI. Tag-less runs can also be triggered manually from the Actions tab.
 
 The sdist is intentionally minimal: package source, package metadata, `README.md`, and `docs/schema.md`. Operational agent guidance, research notes, tests, CI workflows, local locks, and generated artifacts are excluded. See [docs/release.md](docs/release.md) for artifact inspection and scanning commands.
+
+## Live Tests
+
+The default test suite is fixture-only. Live OWA tests are opt-in:
+
+```bash
+uv run pytest tests/live -rs
+M365_OWA_LIVE_CONNECTION=work uv run pytest tests/live -m live -rs
+M365_OWA_LIVE_CONNECTION=work M365_OWA_LIVE_ALLOW_MUTATION=1 uv run pytest tests/live -m "live and mutating" -rs
+```
+
+Mutating live tests create synthetic names with a `m365-owa-cli-live-test-` prefix and clean them up with exact confirmations.
