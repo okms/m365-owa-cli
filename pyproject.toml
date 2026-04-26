@@ -30,6 +30,27 @@ pretty = [
 [project.scripts]
 m365-owa-cli = "m365_owa_cli.cli:app"
 
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/m365_owa_cli/**",
+  "README.md",
+  "pyproject.toml",
+  "docs/schema.md",
+  "docs/release.md",
+]
+exclude = [
+  ".github/**",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "docs/research/**",
+  "specs/**",
+  "tests/**",
+  "uv.lock",
+  "dist/**",
+  "build/**",
+  "*.egg-info/**",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

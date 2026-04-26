@@ -108,3 +108,5 @@ git push origin main --tags
 ```
 
 The `.github/workflows/publish.yml` workflow runs tests, builds the source and wheel distributions, checks them with Twine, and publishes them to PyPI. Tag-less runs can also be triggered manually from the Actions tab.
+
+The sdist is intentionally minimal: package source, package metadata, `README.md`, and `docs/schema.md`. Operational agent guidance, research notes, tests, CI workflows, local locks, and generated artifacts are excluded. See [docs/release.md](docs/release.md) for artifact inspection and scanning commands.
