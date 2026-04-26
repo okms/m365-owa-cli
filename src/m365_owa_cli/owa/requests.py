@@ -45,7 +45,7 @@ def build_list_events_request(
 def build_get_event_request(event_id: str, *, include_raw: bool = False) -> OwaRequest:
     return OwaRequest(
         operation="events.get",
-        endpoint="GetEvent",
+        endpoint="GetCalendarItem",
         payload={"id": event_id, "include_raw": include_raw},
     )
 

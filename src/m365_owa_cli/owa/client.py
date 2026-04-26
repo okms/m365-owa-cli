@@ -459,12 +459,93 @@ class OWAClient:
         return events
 
     def get_event(self, *_, **kwargs: Any) -> dict[str, Any]:
-        self._not_implemented("events.get", "GetEvent", request=kwargs.get("request"))
-        return {}
+        request = kwargs.get("request")
+        if not isinstance(request, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "events.get requires a structured OWA request.",
+                details={"request": request},
+            )
+        include_raw = bool(kwargs.get("include_raw", False))
+        payload = request.get("payload", {})
+        event_id = payload.get("id") if isinstance(payload, Mapping) else None
+        if not event_id:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "events.get request did not include an event id.",
+                details={"request": request},
+            )
+        data = self._post_json("GetCalendarItem", self._get_item_payload(str(event_id)))
+        event = normalize_event(self._extract_get_item(data), include_raw=include_raw)
+        return event.to_dict(include_raw=include_raw)
 
     def search_events(self, *_, **kwargs: Any) -> list[dict[str, Any]]:
         self._not_implemented("events.search", "SearchEvents", request=kwargs.get("request"))
         return []
+
+    def _get_item_payload(self, event_id: str) -> dict[str, Any]:
+        return {
+            "__type": "GetItemJsonRequest:#Exchange",
+            "Header": {
+                "__type": "JsonRequestHeaders:#Exchange",
+                "RequestServerVersion": "Exchange2013",
+            },
+            "Body": {
+                "__type": "GetItemRequest:#Exchange",
+                "ItemShape": {
+                    "__type": "ItemResponseShape:#Exchange",
+                    "BaseShape": "AllProperties",
+                },
+                "ItemIds": [
+                    {
+                        "__type": "ItemId:#Exchange",
+                        "Id": event_id,
+                    }
+                ],
+            },
+        }
+
+    def _extract_get_item(self, data: Mapping[str, Any]) -> Mapping[str, Any]:
+        body = data.get("Body")
+        messages = body.get("ResponseMessages") if isinstance(body, Mapping) else None
+        items = messages.get("Items") if isinstance(messages, Mapping) else None
+        if not isinstance(items, list) or not items:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA get response did not include response messages.",
+                details={"response_keys": sorted(data.keys())},
+            )
+        message = items[0]
+        if not isinstance(message, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA get response message had an unexpected shape.",
+                details={"message": message},
+            )
+        if str(message.get("ResponseClass", "")).lower() != "success" and str(
+            message.get("ResponseCode", "")
+        ).lower() != "noerror":
+            raise M365OwaError(
+                OWA_BACKEND_ERROR,
+                "OWA returned an error while fetching an event.",
+                retryable=False,
+                details={"get_error": message},
+            )
+        found_items = message.get("Items")
+        if not isinstance(found_items, list) or not found_items:
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA get response did not include an event item.",
+                details={"message_keys": sorted(str(key) for key in message.keys())},
+            )
+        item = found_items[0]
+        if not isinstance(item, Mapping):
+            raise M365OwaError(
+                NORMALIZATION_ERROR,
+                "OWA get event item had an unexpected shape.",
+                details={"item": item},
+            )
+        return item
 
     def _create_item_payload(self, request: Mapping[str, Any]) -> dict[str, Any]:
         payload = request.get("payload", {})

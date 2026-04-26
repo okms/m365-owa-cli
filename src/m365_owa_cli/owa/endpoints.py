@@ -35,6 +35,13 @@ ENDPOINTS: dict[str, EndpointSpec] = {
         purpose="Fetch a single calendar event",
         query={"action": "GetEvent", "app": "Calendar"},
     ),
+    "GetCalendarItem": EndpointSpec(
+        action="GetItem",
+        method="POST",
+        path="/owa/service.svc",
+        purpose="Fetch a single calendar event through the generic OWA item endpoint",
+        query={"action": "GetItem", "app": "Calendar"},
+    ),
     "SearchEvents": EndpointSpec(
         action="SearchEvents",
         method="POST",

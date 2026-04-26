@@ -4,7 +4,7 @@
 
 ## Event Output
 
-`events list` and `events search` return `data` as an array of `Event` objects. `events get` returns a single `Event` object once the OWA adapter is implemented.
+`events list` returns `data` as an array of `Event` objects. `events get` returns a single `Event` object. `events search` remains a stable command contract but its OWA adapter is not implemented until the current tenant's search request shape is captured.
 
 ```json
 {
